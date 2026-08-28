@@ -148,7 +148,7 @@ input:focus-visible {
 .human-title p { color: #66594e; }
 .protected-title { color: var(--seafoam); background: rgba(14, 30, 41, 0.97); border-bottom: 1px solid var(--rule-dark); }
 .protected-title p { color: var(--ink-text); }
-.channel-symbol { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid currentColor; border-radius: 50%; font-weight: 800; }
+.channel-symbol { flex: 0 0 auto; display: grid; place-items: center; width: 38px; height: 38px; aspect-ratio: 1; border: 1px solid currentColor; border-radius: 50%; font-weight: 800; }
 .rail-head { display: grid; place-items: center; color: #fff4e7; background: var(--copper); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.14em; border-bottom: 1px solid #d4875d; }
 .copy-button { margin-left: auto; color: var(--seafoam); font-size: 0.76rem; }
 .identity-context { position: relative; margin-left: auto; color: var(--seafoam); font-size: 0.72rem; }
