@@ -771,18 +771,12 @@ def identity_name_context(messages: list[dict], vault: PiiVault) -> dict:
             by_name.setdefault(name, set()).add(person)
     for name, people in by_name.items():
         for left, right in combinations(sorted(people), 2):
-            left_unresolved = any(
-                role == "UNRESOLVED" for role, _ in original_identities[left]
-            )
-            right_unresolved = any(
-                role == "UNRESOLVED" for role, _ in original_identities[right]
-            )
+            left_unresolved = ("UNRESOLVED", name) in original_identities[left]
+            right_unresolved = ("UNRESOLVED", name) in original_identities[right]
+            if left_unresolved == right_unresolved:
+                continue
             candidate, canonical = (
-                (left, right)
-                if left_unresolved and not right_unresolved
-                else (right, left)
-                if right_unresolved and not left_unresolved
-                else (right, left)
+                (left, right) if left_unresolved else (right, left)
             )
             pairs.append((candidate, canonical, name))
     shared: dict[tuple[str, str], set[str]] = {}

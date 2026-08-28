@@ -220,6 +220,20 @@ class PiiGuardTest(unittest.TestCase):
         self.assertIn("never merge PERSON identities", serialized)
         self.assertIn("transfer actions, roles, or authority", serialized)
 
+    def test_person_link_proposals_require_an_unresolved_shared_name(self):
+        vault = PiiVault(self.db, "project-7", self.key)
+        history = [
+            {
+                "role": "user",
+                "content": " ".join(
+                    vault.replacement("private_person", name)
+                    for name in ("John Blake", "John Smith")
+                ),
+            }
+        ]
+
+        self.assertEqual(identity_name_context(history, vault)["person_links"], [])
+
     def test_confirmed_person_link_persists_and_only_changes_the_derived_request(self):
         vault = PiiVault(self.db, "project-7", self.key)
         canonical_name = vault.replacement("private_person", "John Blake")
