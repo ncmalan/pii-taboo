@@ -266,6 +266,10 @@ class PiiGuardTest(unittest.TestCase):
         self.assertNotIn(candidate, json.dumps(outbound))
         self.assertIn(canonical, outbound[3]["content"])
         self.assertEqual(restarted.restore(outbound[3]["content"]), "John Blake approved it; John stopped it.")
+        self.assertEqual(
+            restarted.restore(f"{canonical} {outbound[3]['content']}"),
+            "John Blake John Blake approved it; John stopped it.",
+        )
         self.assertEqual(len(context["identities"]), 1)
         self.assertEqual(context["person_links"], [])
         self.assertEqual(ui_context["person_links"][0]["status"], "confirmed")

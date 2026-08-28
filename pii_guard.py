@@ -587,9 +587,11 @@ class PiiVault:
                     if self._resolve_person_reference(source_person, confirmed) == match["person"]:
                         derived[match.group()] = value
                         break
-        for reference, value in sorted(rows, key=lambda row: len(row[0]), reverse=True):
+        for reference, value in sorted(
+            derived.items(), key=lambda item: len(item[0]), reverse=True
+        ):
             text = text.replace(reference, value)
-        for reference, value in derived.items():
+        for reference, value in sorted(rows, key=lambda row: len(row[0]), reverse=True):
             text = text.replace(reference, value)
         return text
 
