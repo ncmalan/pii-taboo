@@ -172,8 +172,8 @@ class PiiGuardTest(unittest.TestCase):
                 outbound = model_messages(history, vault)
 
                 self.assertEqual(history, canonical)
-                self.assertEqual(json.loads(outbound[1]["content"]), context)
-                self.assertEqual(outbound[2:], history)
+                self.assertEqual(json.loads(outbound[2]["content"]), context)
+                self.assertEqual(outbound[3:], history)
                 self.assertEqual(len(context["identities"]), len(references))
                 counts = Counter(
                     value["name"]
@@ -219,6 +219,30 @@ class PiiGuardTest(unittest.TestCase):
         self.assertIn("Matching NAME references", serialized)
         self.assertIn("never merge PERSON identities", serialized)
         self.assertIn("transfer actions, roles, or authority", serialized)
+
+    def test_model_request_carries_a_structured_protected_evidence_contract(self):
+        vault = PiiVault(self.db, "project-7", self.key)
+
+        contract = json.loads(model_messages([], vault)[1]["content"])
+
+        self.assertEqual(contract["type"], "protected_evidence_contract")
+        self.assertEqual(
+            set(contract["conclusions"]),
+            {"verified_fact", "unresolved_question", "hypothesis"},
+        )
+        self.assertIn(
+            "relevant identities and actions",
+            contract["conclusions"]["verified_fact"],
+        )
+        self.assertIn("contradiction", contract["conclusions"]["verified_fact"])
+        self.assertIn(
+            "what must be verified",
+            contract["conclusions"]["unresolved_question"],
+        )
+        self.assertIn(
+            "not authority-change evidence",
+            contract["field_semantics"]["contact_record.last_updated"],
+        )
 
     def test_model_request_ignores_invented_or_recombined_identity_pairs(self):
         vault = PiiVault(self.db, "project-7", self.key)

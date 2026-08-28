@@ -48,6 +48,26 @@ SYSTEM_GUIDANCE = (
     "the trusted tool boundary resolves authorized arguments and protects results before "
     "returning them."
 )
+PROTECTED_EVIDENCE_CONTRACT = {
+    "type": "protected_evidence_contract",
+    "conclusions": {
+        "verified_fact": (
+            "assert a contradiction only when declared semantics and provenance identify "
+            "authoritative evidence for the relevant identities and actions"
+        ),
+        "unresolved_question": (
+            "when authoritative evidence is absent, state what must be verified before "
+            "reaching a conclusion"
+        ),
+        "hypothesis": "label explicitly and never present as a verified fact",
+    },
+    "field_semantics": {
+        "contact_record.last_updated": (
+            "generic record-maintenance metadata; not authority-change evidence and "
+            "never evidence of revocation or reassignment"
+        ),
+    },
+}
 
 _TYPE_NAMES = {
     "account_number": "ACCOUNT",
@@ -516,6 +536,10 @@ def model_messages(protected_history: list[dict], vault: PiiVault) -> list[dict]
     context = identity_name_context(protected_history, vault)
     return [
         {"role": "system", "content": SYSTEM_GUIDANCE},
+        {
+            "role": "system",
+            "content": json.dumps(PROTECTED_EVIDENCE_CONTRACT, sort_keys=True),
+        },
         {"role": "system", "content": json.dumps(context, sort_keys=True)},
         *protected_history,
     ]

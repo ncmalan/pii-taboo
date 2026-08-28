@@ -14,8 +14,8 @@ _Side-by-side demonstration using synthetic personal information._
 
 1. A local PII detector returns sensitive text spans.
 2. `pii_guard.py` replaces them with stable, typed project references.
-3. Only protected messages, preservation guidance, and a derived opaque identity map go
-   to the LLM.
+3. Only protected messages, preservation guidance, a protected evidence contract, and a
+   derived opaque identity map go to the LLM.
 4. The protected response remains canonical; a project-scoped vault can restore a copy.
 
 Full names expose person identity and component roles alongside atomic name values, for
@@ -40,6 +40,11 @@ identities or transferring their actions, roles, or authority. The derivation va
 opaque pair references without reading mapped values, so model-invented combinations are
 ignored. This request-only map is inspectable in the protected UI lane; it is not added
 to canonical conversation or Markdown memory.
+
+The same request carries a structured protected evidence contract. It keeps verified
+facts, unresolved questions, and hypotheses distinct; permits a contradiction only when
+authoritative evidence supports the relevant identities and actions; and declares generic
+contact-record update metadata insufficient to prove revocation or reassignment.
 
 The detector and vault remain inside the trusted boundary. The reverse map is never
 sent to the downstream LLM. Project IDs are included in keyed fingerprints, preventing

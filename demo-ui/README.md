@@ -27,6 +27,8 @@ request-only identity-to-name-value map derived from vault-emitted opaque pairs.
 is sent to the configured model but is not added to canonical history; invented pairs
 are ignored without reading mapped values. The optional tool lookup adds a deterministic
 fake contact lookup and synthetic result; it does not call the web.
+That result declares its synthetic provenance and evidentiary scope, including that its
+last-updated value is generic record metadata rather than an authority-change event.
 
 The Model popover can override the configured OpenAI-compatible endpoint, API key, and
 model name for the current browser tab. These values use `sessionStorage`, return to the
