@@ -11,6 +11,19 @@ spec.loader.exec_module(server)
 
 
 class DemoServerConfigTest(unittest.TestCase):
+    def test_incomplete_person_handle_is_counted_as_a_distinct_handle(self):
+        history = [
+            {
+                "role": "user",
+                "content": (
+                    "PERSON-SH-2BD262CTZIPF and "
+                    "PERSON-SH-2BD262CTZIPF-UNRESOLVED"
+                ),
+            }
+        ]
+
+        self.assertEqual(server.handle_count(history), 2)
+
     def test_default_api_key_is_not_sent_to_a_custom_endpoint(self):
         original_url, original_key = server.LLM_URL, server.LLM_API_KEY
         try:

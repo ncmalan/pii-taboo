@@ -21,8 +21,11 @@ from typing import Callable, Iterable
 SYSTEM_GUIDANCE = (
     "Personal information has been replaced with stable, typed project references such "
     "as PERSON-SH-ID, EMAIL-SH-ID, or PHONE-SH-ID. The same reference denotes the same "
-    "project value across messages. Person references may end in -FN or -LN for the "
-    "first-name or last-name component of the same base identity. Prefer -FN alone for "
+    "project value across messages. A person reference ending in -UNRESOLVED is one "
+    "captured name component whose first-name, last-name, or mononym role is unknown; "
+    "preserve it unchanged and never convert it to -FN or -LN. Full person references "
+    "may end in -FN or -LN for the first-name or last-name component of the same base "
+    "identity. Prefer -FN alone for "
     "a natural conversational greeting; use a visible title plus -LN for formal address, "
     "and use both only when the full name is materially needed. Email addresses are represented "
     "as EMAIL-SH-ID-USER@EMAIL-SH-ID-DOMAIN so either component can be reused without "
@@ -49,7 +52,7 @@ _TYPE_NAMES = {
     "secret": "SECRET",
 }
 _REFERENCE_RE = re.compile(
-    rf"\b(?:{'|'.join(_TYPE_NAMES.values())})-SH-[A-Z2-7]{{12}}(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?\b"
+    rf"\b(?:{'|'.join(_TYPE_NAMES.values())})-SH-[A-Z2-7]{{12}}(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|UNRESOLVED|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?\b"
 )
 MAX_CHUNK_BYTES = 7_500
 CHUNK_OVERLAP_CHARS = 512
@@ -204,7 +207,11 @@ class PiiVault:
             # ponytail: first-token/remainder heuristic; use canonical name components
             # from entity reconciliation when names beyond this POC matter.
             prefix, first_name, last_name = person_parts
-            components = (("FN", first_name), ("LN", last_name))
+            components = (
+                (("FN", first_name), ("LN", last_name))
+                if last_name
+                else (("UNRESOLVED", first_name),)
+            )
         elif pii_type == "EMAIL" and (email_parts := _email_parts(value)):
             components = (("USER", email_parts[0]), ("DOMAIN", email_parts[1]))
             separators = ("@",)
@@ -293,7 +300,11 @@ def _normalize(pii_type: str, value: str) -> str:
         return re.sub(r"[^\w]", "", value).casefold()
     if pii_type == "PERSON":
         parts = _person_parts(value)
-        return f"{parts[1]} {parts[2]}".casefold() if parts else value.casefold()
+        return (
+            " ".join(part for part in parts[1:] if part).casefold()
+            if parts
+            else value.casefold()
+        )
     if pii_type in {"EMAIL", "ADDRESS"}:
         return value.casefold()
     if pii_type == "DATE" and (parts := _date_parts(value)):
@@ -306,14 +317,14 @@ def _clean(value: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", value).split())
 
 
-def _person_parts(value: str) -> tuple[str, str, str] | None:
+def _person_parts(value: str) -> tuple[str, str, str | None] | None:
     parts = value.strip().split()
     title = ""
     if parts and parts[0].rstrip(".").casefold() in _HONORIFICS:
         title = parts.pop(0)
-    if len(parts) < 2:
+    if not parts:
         return None
-    return title, parts[0], " ".join(parts[1:])
+    return title, parts[0], " ".join(parts[1:]) or None
 
 
 def _email_parts(value: str) -> tuple[str, str] | None:

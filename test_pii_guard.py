@@ -80,6 +80,36 @@ class PiiGuardTest(unittest.TestCase):
             person_reference,
         )
 
+    def test_incomplete_person_mentions_stay_unresolved_and_restore_exactly(self):
+        vault = PiiVault(self.db, "project-7", self.key)
+
+        for mention in ("Alice", "Smith", "Cher"):
+            reference = vault.reference("private_person", mention)
+            protected = vault.replacement("private_person", mention)
+            self.assertEqual(protected, f"{reference}-UNRESOLVED")
+            self.assertEqual(vault.restore(protected), mention)
+
+        titled_reference = vault.reference("private_person", "Dr. Ndlovu")
+        titled_protected = vault.replacement("private_person", "Dr. Ndlovu")
+        self.assertEqual(titled_protected, f"Dr. {titled_reference}-UNRESOLVED")
+        self.assertEqual(vault.restore(titled_protected), "Dr. Ndlovu")
+
+        full_reference = vault.reference("private_person", "Alice Smith")
+        self.assertEqual(
+            vault.replacement("private_person", "Alice Smith"),
+            f"{full_reference}-FN {full_reference}-LN",
+        )
+
+        restarted = PiiVault(self.db, "project-7", self.key)
+        self.assertEqual(
+            restarted.replacement("private_person", "Alice"),
+            vault.replacement("private_person", "Alice"),
+        )
+        self.assertEqual(
+            restarted.restore(restarted.replacement("private_person", "Alice")),
+            "Alice",
+        )
+
     def test_normalization_and_reconciled_aliases(self):
         vault = PiiVault(self.db, "project-7", self.key)
         phone = vault.reference("private_phone", "+27 82 555 0199")

@@ -21,7 +21,7 @@ const modelApiKey = document.querySelector("#modelApiKey");
 const modelName = document.querySelector("#modelName");
 const modelDefaults = document.querySelector("#modelDefaults");
 
-const HANDLE_PATTERN = /((?:ACCOUNT|ADDRESS|EMAIL|PERSON|PHONE|URL|DATE|SECRET)-SH-[A-Z2-7]{12}(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?)/g;
+const HANDLE_PATTERN = /((?:ACCOUNT|ADDRESS|EMAIL|PERSON|PHONE|URL|DATE|SECRET)-SH-[A-Z2-7]{12}(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|UNRESOLVED|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?)/g;
 const MODEL_STORAGE_KEY = "pii-taboo-model-config";
 let sessionId = crypto.randomUUID();
 let turns = [];
@@ -274,7 +274,7 @@ async function sendMessage(event) {
 }
 
 function loadSample() {
-  messageInput.value = "On 2026-08-01 John Blake told Alice Smith to approve the migration. On 2026-08-14 John Blake told Bob Jones to stop it. What inconsistency should the team investigate?";
+  messageInput.value = "On 2026-08-01 John Blake told Alice to approve the migration. On 2026-08-14 John Blake told Bob Jones to stop it. What inconsistency should the team investigate?";
   toolToggle.checked = true;
   messageInput.focus();
 }

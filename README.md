@@ -17,10 +17,12 @@ _Side-by-side demonstration using synthetic personal information._
 3. Only protected messages and preservation guidance go to the LLM.
 4. The protected response remains canonical; a project-scoped vault can restore a copy.
 
-Names expose independently reusable `PERSON-SH-…-FN` and `-LN` components. Emails use
-`EMAIL-SH-…-USER@EMAIL-SH-…-DOMAIN`. Unambiguous dates expose representation-aware
-day, month, and year variants, allowing an LLM to reformat a date without learning its
-value. Ambiguous numeric dates remain atomic.
+Full names expose independently reusable `PERSON-SH-…-FN` and `-LN` components. A
+single detected name token uses `PERSON-SH-…-UNRESOLVED`, preserving that it may be a
+first name, surname, or mononym without guessing which. Emails use
+`EMAIL-SH-…-USER@EMAIL-SH-…-DOMAIN`. Unambiguous dates expose representation-aware day,
+month, and year variants, allowing an LLM to reformat a date without learning its value.
+Ambiguous numeric dates remain atomic.
 
 The detector and vault remain inside the trusted boundary. The reverse map is never
 sent to the downstream LLM. Project IDs are included in keyed fingerprints, preventing
