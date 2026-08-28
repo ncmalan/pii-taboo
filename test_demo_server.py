@@ -11,18 +11,18 @@ spec.loader.exec_module(server)
 
 
 class DemoServerConfigTest(unittest.TestCase):
-    def test_incomplete_person_handle_is_counted_as_a_distinct_handle(self):
+    def test_person_and_shared_name_value_handles_are_counted_separately(self):
         history = [
             {
                 "role": "user",
                 "content": (
-                    "PERSON-SH-2BD262CTZIPF and "
-                    "PERSON-SH-2BD262CTZIPF-UNRESOLVED"
+                    "PERSON-SH-2BD262CTZIPF-FN:NAME-SH-AJD262CTZIPF and "
+                    "PERSON-SH-3CD262CTZIPF-UNRESOLVED:NAME-SH-AJD262CTZIPF"
                 ),
             }
         ]
 
-        self.assertEqual(server.handle_count(history), 2)
+        self.assertEqual(server.handle_count(history), 3)
 
     def test_default_api_key_is_not_sent_to_a_custom_endpoint(self):
         original_url, original_key = server.LLM_URL, server.LLM_API_KEY

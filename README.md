@@ -17,12 +17,20 @@ _Side-by-side demonstration using synthetic personal information._
 3. Only protected messages and preservation guidance go to the LLM.
 4. The protected response remains canonical; a project-scoped vault can restore a copy.
 
-Full names expose independently reusable `PERSON-SH-…-FN` and `-LN` components. A
-single detected name token uses `PERSON-SH-…-UNRESOLVED`, preserving that it may be a
-first name, surname, or mononym without guessing which. Emails use
+Full names expose person identity and component roles alongside atomic name values, for
+example `PERSON-SH-…-FN:NAME-SH-…`. A single detected name token uses
+`PERSON-SH-…-UNRESOLVED:NAME-SH-…`, preserving a distinct mention identity without
+guessing whether the value is a first name, surname, or mononym. Equal normalized name
+values share the `NAME` reference within a project even when their `PERSON` identities
+differ. Emails use
 `EMAIL-SH-…-USER@EMAIL-SH-…-DOMAIN`. Unambiguous dates expose representation-aware day,
 month, and year variants, allowing an LLM to reformat a date without learning its value.
 Ambiguous numeric dates remain atomic.
+
+Atomic name values are normalized with Unicode NFKC, collapsed whitespace, and Unicode
+case folding before their project ID and type are included in the keyed HMAC. Honorifics
+remain visible and are excluded from the name value. The vault retains the reverse map;
+neither normalized nor original names are added to the downstream model payload.
 
 The detector and vault remain inside the trusted boundary. The reverse map is never
 sent to the downstream LLM. Project IDs are included in keyed fingerprints, preventing

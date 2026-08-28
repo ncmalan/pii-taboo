@@ -171,7 +171,7 @@ def handle_count(history: list[dict]) -> int:
     return len(
         set(
             re.findall(
-                r"\b(?:ACCOUNT|ADDRESS|EMAIL|PERSON|PHONE|URL|DATE|SECRET)-SH-[A-Z2-7]{12}(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|UNRESOLVED|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?\b",
+                r"\b(?:ACCOUNT|ADDRESS|EMAIL|NAME|PERSON|PHONE|URL|DATE|SECRET)-SH-[A-Z2-7]{12}(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|UNRESOLVED|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?\b",
                 "\n".join(item["content"] for item in history),
             )
         )

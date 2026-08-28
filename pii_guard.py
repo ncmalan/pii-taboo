@@ -21,11 +21,14 @@ from typing import Callable, Iterable
 SYSTEM_GUIDANCE = (
     "Personal information has been replaced with stable, typed project references such "
     "as PERSON-SH-ID, EMAIL-SH-ID, or PHONE-SH-ID. The same reference denotes the same "
-    "project value across messages. A person reference ending in -UNRESOLVED is one "
-    "captured name component whose first-name, last-name, or mononym role is unknown; "
-    "preserve it unchanged and never convert it to -FN or -LN. Full person references "
-    "may end in -FN or -LN for the first-name or last-name component of the same base "
-    "identity. Prefer -FN alone for "
+    "project value across messages. Person name components use paired references such as "
+    "PERSON-SH-ID-FN:NAME-SH-ID. The PERSON reference carries identity and component role; "
+    "the NAME reference carries only normalized atomic name equality. The same NAME "
+    "reference can occur with different PERSON identities and does not prove that the "
+    "people are the same. A PERSON reference ending in -UNRESOLVED is a distinct mention "
+    "whose first-name, last-name, or mononym role is unknown; preserve the complete pair "
+    "unchanged and never convert it to -FN or -LN. Full person references use -FN or -LN "
+    "for the first-name or last-name component. Prefer the -FN pair alone for "
     "a natural conversational greeting; use a visible title plus -LN for formal address, "
     "and use both only when the full name is materially needed. Email addresses are represented "
     "as EMAIL-SH-ID-USER@EMAIL-SH-ID-DOMAIN so either component can be reused without "
@@ -45,14 +48,23 @@ _TYPE_NAMES = {
     "account_number": "ACCOUNT",
     "private_address": "ADDRESS",
     "private_email": "EMAIL",
+    "private_name": "NAME",
     "private_person": "PERSON",
     "private_phone": "PHONE",
     "private_url": "URL",
     "private_date": "DATE",
     "secret": "SECRET",
 }
+_REFERENCE_ID = r"[A-Z2-7]{12}"
+_PERSON_NAME_REFERENCE = (
+    rf"PERSON-SH-{_REFERENCE_ID}-(?:FN|LN|UNRESOLVED):NAME-SH-{_REFERENCE_ID}"
+)
+_ATOMIC_REFERENCE = (
+    rf"(?:{'|'.join(_TYPE_NAMES.values())})-SH-{_REFERENCE_ID}"
+    r"(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|UNRESOLVED|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?"
+)
 _REFERENCE_RE = re.compile(
-    rf"\b(?:{'|'.join(_TYPE_NAMES.values())})-SH-[A-Z2-7]{{12}}(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|UNRESOLVED|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?\b"
+    rf"\b(?:{_PERSON_NAME_REFERENCE}|{_ATOMIC_REFERENCE})\b"
 )
 MAX_CHUNK_BYTES = 7_500
 CHUNK_OVERLAP_CHARS = 512
@@ -203,6 +215,7 @@ class PiiVault:
         prefix = ""
         separators = (" ",)
         stored_components = None
+        name_components = None
         if pii_type == "PERSON" and (person_parts := _person_parts(value)):
             # ponytail: first-token/remainder heuristic; use canonical name components
             # from entity reconciliation when names beyond this POC matter.
@@ -211,6 +224,10 @@ class PiiVault:
                 (("FN", first_name), ("LN", last_name))
                 if last_name
                 else (("UNRESOLVED", first_name),)
+            )
+            name_components = tuple(
+                (suffix, component, self.reference("private_name", component))
+                for suffix, component in components
             )
         elif pii_type == "EMAIL" and (email_parts := _email_parts(value)):
             components = (("USER", email_parts[0]), ("DOMAIN", email_parts[1]))
@@ -227,7 +244,27 @@ class PiiVault:
                     for suffix, component in stored_components or components
                 ),
             )
-        component_handles = [f"{reference}-{suffix}" for suffix, _ in components]
+            if name_components:
+                connection.executemany(
+                    "INSERT OR IGNORE INTO pii_entities VALUES (?, ?, ?, ?)",
+                    (
+                        (
+                            self.project_id,
+                            f"{reference}-{suffix}:{name_reference}",
+                            pii_type,
+                            component,
+                        )
+                        for suffix, component, name_reference in name_components
+                    ),
+                )
+        component_handles = (
+            [
+                f"{reference}-{suffix}:{name_reference}"
+                for suffix, _, name_reference in name_components
+            ]
+            if name_components
+            else [f"{reference}-{suffix}" for suffix, _ in components]
+        )
         handles = component_handles[0]
         for separator, handle in zip(separators, component_handles[1:]):
             handles += separator + handle
@@ -305,7 +342,7 @@ def _normalize(pii_type: str, value: str) -> str:
             if parts
             else value.casefold()
         )
-    if pii_type in {"EMAIL", "ADDRESS"}:
+    if pii_type in {"EMAIL", "ADDRESS", "NAME"}:
         return value.casefold()
     if pii_type == "DATE" and (parts := _date_parts(value)):
         values = dict(parts[2])
