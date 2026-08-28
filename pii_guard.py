@@ -369,7 +369,9 @@ class PiiVault:
         if len(resolver_identity) > 256:
             raise ValueError("resolver_identity must be at most 256 characters")
         if supersedes_decision_id is not None and (
-            not isinstance(supersedes_decision_id, int) or supersedes_decision_id < 1
+            isinstance(supersedes_decision_id, bool)
+            or not isinstance(supersedes_decision_id, int)
+            or supersedes_decision_id < 1
         ):
             raise ValueError("supersedes_decision_id must be a positive integer")
 

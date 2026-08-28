@@ -287,6 +287,19 @@ class PiiGuardTest(unittest.TestCase):
                 resolver_identity="senior-reviewer",
             )
 
+        for boolean_id in (True, False):
+            with self.subTest(boolean_id=boolean_id), self.assertRaisesRegex(
+                ValueError, "positive integer"
+            ):
+                restarted.decide_person_link(
+                    candidate,
+                    canonical,
+                    "confirmed",
+                    evidence_source="later synthetic evidence",
+                    resolver_identity="senior-reviewer",
+                    supersedes_decision_id=boolean_id,
+                )
+
         confirmed = restarted.decide_person_link(
             candidate,
             canonical,
