@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 from collections import Counter
+from contextlib import closing
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
@@ -374,7 +375,7 @@ class PiiGuardTest(unittest.TestCase):
         other = PiiVault(self.db, "project-8", self.key)
         other_candidate = other.reference("private_person", "Bob")
         other_canonical = other.reference("private_person", "Bob Smith")
-        with sqlite3.connect(self.db) as connection:
+        with closing(sqlite3.connect(self.db)) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO person_link_decisions (

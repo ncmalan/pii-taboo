@@ -567,17 +567,21 @@ class PiiVault:
                 self._active_person_link_decisions(connection).values()
             )
             derived = {}
+            row_references = {row[0] for row in rows}
+            candidates_by_suffix = {}
             for match in _PERSON_NAME_RELATION_RE.finditer(text):
-                if any(row[0] == match.group() for row in rows):
+                if match.group() in row_references:
                     continue
                 suffix = f"-{match['role']}:{match['name']}"
-                candidates = connection.execute(
-                    """
-                    SELECT reference, canonical_value FROM pii_entities
-                    WHERE project_id = ? AND pii_type = 'PERSON' AND reference LIKE ?
-                    """,
-                    (self.project_id, f"%{suffix}"),
-                ).fetchall()
+                if suffix not in candidates_by_suffix:
+                    candidates_by_suffix[suffix] = connection.execute(
+                        """
+                        SELECT reference, canonical_value FROM pii_entities
+                        WHERE project_id = ? AND pii_type = 'PERSON' AND reference LIKE ?
+                        """,
+                        (self.project_id, f"%{suffix}"),
+                    ).fetchall()
+                candidates = candidates_by_suffix[suffix]
                 for source, value in candidates:
                     source_person = source.split("-" + match["role"] + ":", 1)[0]
                     if self._resolve_person_reference(source_person, confirmed) == match["person"]:
@@ -783,8 +787,8 @@ def identity_name_context(messages: list[dict], vault: PiiVault) -> dict:
     shared: dict[tuple[str, str], set[str]] = {}
     for candidate, canonical, name in pairs:
         shared.setdefault((candidate, canonical), set()).add(name)
-    statuses = vault.person_link_statuses(shared)
-    canonical_references = vault.canonical_person_references(original_identities)
+    statuses = vault.person_link_statuses(shared.keys())
+    canonical_references = vault.canonical_person_references(original_identities.keys())
     identities: dict[str, set[tuple[str, str]]] = {}
     for person, name_values in original_identities.items():
         identities.setdefault(canonical_references[person], set()).update(name_values)
