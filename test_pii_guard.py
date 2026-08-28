@@ -360,6 +360,44 @@ class PiiGuardTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cycle"):
             vault.decide_person_link(first, second, **fields)
 
+    def test_cross_project_supersession_cannot_hide_an_active_decision(self):
+        vault = PiiVault(self.db, "project-7", self.key)
+        candidate = vault.reference("private_person", "Alice")
+        canonical = vault.reference("private_person", "Alice Smith")
+        decision = vault.decide_person_link(
+            candidate,
+            canonical,
+            "rejected",
+            evidence_source="synthetic identity record",
+            resolver_identity="demo-reviewer",
+        )
+        other = PiiVault(self.db, "project-8", self.key)
+        other_candidate = other.reference("private_person", "Bob")
+        other_canonical = other.reference("private_person", "Bob Smith")
+        with sqlite3.connect(self.db) as connection:
+            connection.execute(
+                """
+                INSERT INTO person_link_decisions (
+                    project_id, candidate_reference, canonical_reference, decision,
+                    evidence_source, resolver_identity, decided_at,
+                    supersedes_decision_id
+                ) VALUES (?, ?, ?, 'rejected', 'synthetic record',
+                          'demo-reviewer', '2026-08-28T00:00:00+00:00', ?)
+                """,
+                (
+                    "project-8",
+                    other_candidate,
+                    other_canonical,
+                    decision["decision_id"],
+                ),
+            )
+
+        statuses = vault.person_link_statuses({(candidate, canonical)})
+
+        self.assertEqual(
+            statuses[(candidate, canonical)]["decision_id"], decision["decision_id"]
+        )
+
     def test_model_request_carries_a_structured_protected_evidence_contract(self):
         vault = PiiVault(self.db, "project-7", self.key)
 

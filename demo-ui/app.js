@@ -198,10 +198,8 @@ function renderPersonLinks() {
       button.type = "button";
       const label = decision === "confirmed" ? "Confirm" : "Reject";
       button.textContent = link.status === "unresolved" ? label : `Supersede: ${label}`;
-      button.setAttribute(
-        "aria-label",
-        `${button.textContent}: ${link.candidate_value} as ${link.canonical_value}`,
-      );
+      button.ariaLabel =
+        `${button.textContent}: ${link.candidate_value} as ${link.canonical_value}`;
       button.addEventListener("click", () => decidePersonLink(link, decision, button));
       actions.append(button);
     });

@@ -499,7 +499,8 @@ class PiiVault:
             FROM person_link_decisions AS decision
             WHERE project_id = ? AND NOT EXISTS (
                 SELECT 1 FROM person_link_decisions AS later
-                WHERE later.supersedes_decision_id = decision.decision_id
+                WHERE later.project_id = decision.project_id
+                  AND later.supersedes_decision_id = decision.decision_id
             )
             """,
             (self.project_id,),

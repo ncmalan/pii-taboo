@@ -137,7 +137,7 @@ class DemoServerConfigTest(unittest.TestCase):
         self.assertIn('id="identityContext"', html)
         self.assertIn("UI-only identity status", html)
         script = (server.DEMO_DIR / "app.js").read_text()
-        self.assertIn('button.setAttribute(\n        "aria-label"', script)
+        self.assertIn("button.ariaLabel =", script)
 
     def test_trusted_person_link_decision_records_audit_without_rewriting_history(self):
         payload = {
