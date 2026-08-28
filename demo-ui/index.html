@@ -59,13 +59,28 @@
           <section class="lane-title human-title">
             <span class="channel-symbol">H</span>
             <div><h1>User View</h1><p>What people see</p></div>
+            <details class="person-link-panel">
+              <summary>Resolve identities <b id="personLinkCount">0</b></summary>
+              <div class="person-link-menu">
+                <p>Trusted demo control. Decisions affect derived model requests, never stored protected history.</p>
+                <label for="resolverIdentity">Resolver identity</label>
+                <input id="resolverIdentity" maxlength="256" required value="demo-reviewer" />
+                <label for="evidenceSource">Evidence source</label>
+                <input id="evidenceSource" maxlength="1000" required placeholder="Synthetic authoritative identity record" />
+                <h3>Proposals</h3>
+                <div id="personLinkCandidates" class="person-link-candidates">No person-link candidates yet.</div>
+                <h3>Recorded decisions</h3>
+                <div id="personLinkDecisions" class="person-link-candidates">No recorded decisions yet.</div>
+                <p id="personLinkFeedback" class="person-link-feedback" aria-live="polite"></p>
+              </div>
+            </details>
           </section>
           <div class="rail-head" aria-hidden="true">SYNC</div>
           <section class="lane-title protected-title">
             <span class="channel-symbol">P</span>
-            <div><h2>LLM View</h2><p>Protected history + request-only identity map</p></div>
+            <div><h2>LLM View</h2><p>Canonical protected history + UI-only identity status</p></div>
             <details class="identity-context">
-              <summary>Identity map</summary>
+              <summary>Identity resolution status</summary>
               <pre id="identityContext">No protected person references yet.</pre>
             </details>
             <button class="copy-button" id="copyButton" type="button" disabled>
@@ -88,7 +103,7 @@
       <footer class="composer-wrap">
         <div class="composer-meta">
           <label for="projectId">Project namespace</label>
-          <input id="projectId" value="demo-project" maxlength="64" pattern="[A-Za-z0-9_-]+" />
+          <input id="projectId" value="demo-project" maxlength="64" pattern="[A-Za-z0-9_\-]+" />
           <span>Synthetic data only</span>
         </div>
         <form class="composer" id="composer">

@@ -22,13 +22,25 @@ Unambiguous dates use `-DAY-NUM` / `-DAY-ISO`, `-MONTH-NAME-ENG` / `-MONTH-ISO`,
 the presentation filter restores the corresponding values.
 
 The User View restores PII for the authorised viewer. The LLM View shows the canonical
-protected history retained for memory, logs, and cache reuse, plus an inspectable
-request-only identity-to-name-value map derived from vault-emitted opaque pairs. The map
-is sent to the configured model but is not added to canonical history; invented pairs
-are ignored without reading mapped values. The optional tool lookup adds a deterministic
-fake contact lookup and synthetic result; it does not call the web.
+protected history retained for memory, logs, and cache reuse, plus a clearly labelled
+UI-only identity-resolution status derived from vault-emitted opaque pairs. That status
+is not the exact outbound model context: confirmed candidate links stay visible in the
+UI for audit clarity but are omitted from the model context, which contains only the
+canonical identity. Neither view is added to canonical history; invented pairs are
+ignored without reading mapped values. The optional tool lookup adds a deterministic fake
+contact lookup and synthetic result; it does not call the web.
 That result declares its synthetic provenance and evidentiary scope, including that its
 last-updated value is generic record metadata rather than an authority-change event.
+
+The trusted **Resolve identities** panel stacks unresolved shared-name matches as
+**Proposals**. Each proposal shows the restored candidate and canonical values together
+with their opaque references, then accepts a confirmation or rejection with evidence and
+resolver identity. Confirmed and rejected links move out of Proposals into recorded
+decisions, where a deliberate action can supersede them. Decisions persist in the local
+SQLite vault. Confirmed identities are canonicalized only in later derived LLM payloads,
+while the protected transcript remains unchanged. The panel is a demo control, not an
+authenticated production approval or audit system, and identity confirmation is not
+evidence of authority actions or events.
 
 The Model popover can override the configured OpenAI-compatible endpoint, API key, and
 model name for the current browser tab. These values use `sessionStorage`, return to the

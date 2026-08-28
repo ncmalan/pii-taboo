@@ -13,7 +13,8 @@ import unicodedata
 import urllib.request
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+from itertools import combinations
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -46,7 +47,9 @@ SYSTEM_GUIDANCE = (
     "the base ID. An atomic DATE reference cannot be reformatted. Use the type as semantic "
     "context and never guess an original value. Tool calls may pass protected references; "
     "the trusted tool boundary resolves authorized arguments and protects results before "
-    "returning them."
+    "returning them. Confirmed person links may make multiple protected mentions use one "
+    "canonical PERSON identity in this derived request. That identity resolution is not "
+    "evidence that the person performed, approved, revoked, or reassigned any action."
 )
 PROTECTED_EVIDENCE_CONTRACT = {
     "type": "protected_evidence_contract",
@@ -65,6 +68,10 @@ PROTECTED_EVIDENCE_CONTRACT = {
         "contact_record.last_updated": (
             "generic record-maintenance metadata; not authority-change evidence and "
             "never evidence of revocation or reassignment"
+        ),
+        "confirmed_person_link": (
+            "identity resolution only; not evidence of authority actions, approvals, "
+            "revocations, reassignments, or other events"
         ),
     },
 }
@@ -88,6 +95,8 @@ _PERSON_NAME_RELATION_RE = re.compile(
     rf"\b(?P<person>PERSON-SH-{_REFERENCE_ID})-"
     rf"(?P<role>FN|LN|UNRESOLVED):(?P<name>NAME-SH-{_REFERENCE_ID})\b"
 )
+_PERSON_REFERENCE_RE = re.compile(rf"^PERSON-SH-{_REFERENCE_ID}$")
+_PERSON_REFERENCE_IN_TEXT_RE = re.compile(rf"\bPERSON-SH-{_REFERENCE_ID}\b")
 _ATOMIC_REFERENCE = (
     rf"(?:{'|'.join(_TYPE_NAMES.values())})-SH-{_REFERENCE_ID}"
     r"(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|UNRESOLVED|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?"
@@ -183,6 +192,19 @@ class PiiVault:
                     reference TEXT NOT NULL,
                     PRIMARY KEY (project_id, fingerprint)
                 );
+                CREATE TABLE IF NOT EXISTS person_link_decisions (
+                    decision_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id TEXT NOT NULL,
+                    candidate_reference TEXT NOT NULL,
+                    canonical_reference TEXT NOT NULL,
+                    decision TEXT NOT NULL CHECK (decision IN ('confirmed', 'rejected')),
+                    evidence_source TEXT NOT NULL,
+                    resolver_identity TEXT NOT NULL,
+                    decided_at TEXT NOT NULL,
+                    supersedes_decision_id INTEGER UNIQUE
+                );
+                CREATE INDEX IF NOT EXISTS person_link_project_candidate
+                    ON person_link_decisions (project_id, candidate_reference);
                 """
             )
         os.chmod(db_path, 0o600)
@@ -325,6 +347,208 @@ class PiiVault:
                 (self.project_id, fingerprint, reference),
             )
 
+    def decide_person_link(
+        self,
+        candidate_reference: str,
+        canonical_reference: str,
+        decision: str,
+        *,
+        evidence_source: str,
+        resolver_identity: str,
+        supersedes_decision_id: int | None = None,
+    ) -> dict:
+        """Append one trusted identity decision and return its audit record."""
+        if decision not in {"confirmed", "rejected"}:
+            raise ValueError("decision must be confirmed or rejected")
+        if not isinstance(evidence_source, str) or not evidence_source.strip():
+            raise ValueError("evidence_source must not be empty")
+        if len(evidence_source) > 1_000:
+            raise ValueError("evidence_source must be at most 1000 characters")
+        if not isinstance(resolver_identity, str) or not resolver_identity.strip():
+            raise ValueError("resolver_identity must not be empty")
+        if len(resolver_identity) > 256:
+            raise ValueError("resolver_identity must be at most 256 characters")
+        if supersedes_decision_id is not None and (
+            not isinstance(supersedes_decision_id, int) or supersedes_decision_id < 1
+        ):
+            raise ValueError("supersedes_decision_id must be a positive integer")
+
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._validate_person_reference(connection, candidate_reference)
+            self._validate_person_reference(connection, canonical_reference)
+            if candidate_reference == canonical_reference:
+                raise ValueError("a person reference cannot link to itself")
+
+            active = self._active_person_link_decisions(connection)
+            pair = (candidate_reference, canonical_reference)
+            current = active.get(pair)
+            if current and supersedes_decision_id != current["decision_id"]:
+                raise ValueError(
+                    f"supersedes_decision_id must explicitly supersede decision "
+                    f"{current['decision_id']}"
+                )
+            if not current and supersedes_decision_id is not None:
+                raise ValueError("supersedes_decision_id is not the active decision for this link")
+
+            confirmed = self._confirmed_person_links(active.values())
+            if current and current["decision"] == "confirmed":
+                confirmed.pop(candidate_reference, None)
+            if decision == "confirmed":
+                existing = confirmed.get(candidate_reference)
+                if existing and existing != canonical_reference:
+                    raise ValueError("conflicting canonical identity")
+                confirmed[candidate_reference] = canonical_reference
+                self._resolve_person_reference(candidate_reference, confirmed)
+
+            decided_at = datetime.now(timezone.utc).isoformat()
+            cursor = connection.execute(
+                """
+                INSERT INTO person_link_decisions (
+                    project_id, candidate_reference, canonical_reference, decision,
+                    evidence_source, resolver_identity, decided_at, supersedes_decision_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self.project_id,
+                    candidate_reference,
+                    canonical_reference,
+                    decision,
+                    evidence_source.strip(),
+                    resolver_identity.strip(),
+                    decided_at,
+                    supersedes_decision_id,
+                ),
+            )
+            return {
+                "decision_id": cursor.lastrowid,
+                "project_id": self.project_id,
+                "candidate_reference": candidate_reference,
+                "canonical_reference": canonical_reference,
+                "decision": decision,
+                "evidence_source": evidence_source.strip(),
+                "resolver_identity": resolver_identity.strip(),
+                "decided_at": decided_at,
+                "supersedes_decision_id": supersedes_decision_id,
+            }
+
+    def person_link_audit(
+        self, candidate_reference: str, canonical_reference: str
+    ) -> list[dict]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT decision_id, project_id, candidate_reference, canonical_reference,
+                       decision, evidence_source, resolver_identity, decided_at,
+                       supersedes_decision_id
+                FROM person_link_decisions
+                WHERE project_id = ? AND candidate_reference = ? AND canonical_reference = ?
+                ORDER BY decision_id
+                """,
+                (self.project_id, candidate_reference, canonical_reference),
+            ).fetchall()
+        return [self._decision_record(row) for row in rows]
+
+    def person_link_statuses(
+        self, pairs: Iterable[tuple[str, str]]
+    ) -> dict[tuple[str, str], dict]:
+        wanted = set(pairs)
+        if not wanted:
+            return {}
+        with self._connect() as connection:
+            active = self._active_person_link_decisions(connection)
+        return {pair: active[pair] for pair in wanted if pair in active}
+
+    def canonical_person_references(self, references: Iterable[str]) -> dict[str, str]:
+        with self._connect() as connection:
+            confirmed = self._confirmed_person_links(
+                self._active_person_link_decisions(connection).values()
+            )
+        return {
+            reference: self._resolve_person_reference(reference, confirmed)
+            for reference in set(references)
+        }
+
+    def _validate_person_reference(self, connection, reference: str) -> None:
+        if not isinstance(reference, str):
+            raise ValueError("person reference must be a string")
+        entity = connection.execute(
+            "SELECT pii_type FROM pii_entities WHERE project_id = ? AND reference = ?",
+            (self.project_id, reference),
+        ).fetchone()
+        if entity:
+            if entity[0] != "PERSON" or not _PERSON_REFERENCE_RE.fullmatch(reference):
+                raise ValueError("person link reference type mismatch")
+            return
+        foreign = connection.execute(
+            "SELECT 1 FROM pii_entities WHERE project_id != ? AND reference = ? LIMIT 1",
+            (self.project_id, reference),
+        ).fetchone()
+        if foreign:
+            raise ValueError("cross-project person reference")
+        raise ValueError(f"unknown person reference: {reference}")
+
+    def _active_person_link_decisions(self, connection) -> dict[tuple[str, str], dict]:
+        rows = connection.execute(
+            """
+            SELECT decision_id, project_id, candidate_reference, canonical_reference,
+                   decision, evidence_source, resolver_identity, decided_at,
+                   supersedes_decision_id
+            FROM person_link_decisions AS decision
+            WHERE project_id = ? AND NOT EXISTS (
+                SELECT 1 FROM person_link_decisions AS later
+                WHERE later.supersedes_decision_id = decision.decision_id
+            )
+            """,
+            (self.project_id,),
+        ).fetchall()
+        return {
+            (row[2], row[3]): self._decision_record(row)
+            for row in rows
+        }
+
+    @staticmethod
+    def _decision_record(row) -> dict:
+        return dict(
+            zip(
+                (
+                    "decision_id",
+                    "project_id",
+                    "candidate_reference",
+                    "canonical_reference",
+                    "decision",
+                    "evidence_source",
+                    "resolver_identity",
+                    "decided_at",
+                    "supersedes_decision_id",
+                ),
+                row,
+            )
+        )
+
+    @staticmethod
+    def _confirmed_person_links(decisions: Iterable[dict]) -> dict[str, str]:
+        links: dict[str, str] = {}
+        for item in decisions:
+            if item["decision"] != "confirmed":
+                continue
+            candidate = item["candidate_reference"]
+            canonical = item["canonical_reference"]
+            if candidate in links and links[candidate] != canonical:
+                raise ValueError("conflicting canonical identities")
+            links[candidate] = canonical
+        return links
+
+    @staticmethod
+    def _resolve_person_reference(reference: str, links: dict[str, str]) -> str:
+        seen = set()
+        while reference in links:
+            if reference in seen:
+                raise ValueError("person link cycle")
+            seen.add(reference)
+            reference = links[reference]
+        return reference
+
     def restore(self, text: str) -> str:
         references = set(_REFERENCE_RE.findall(text))
         if not references:
@@ -336,7 +560,29 @@ class PiiVault:
                 f"AND reference IN ({placeholders})",
                 (self.project_id, *references),
             ).fetchall()
+            confirmed = self._confirmed_person_links(
+                self._active_person_link_decisions(connection).values()
+            )
+            derived = {}
+            for match in _PERSON_NAME_RELATION_RE.finditer(text):
+                if any(row[0] == match.group() for row in rows):
+                    continue
+                suffix = f"-{match['role']}:{match['name']}"
+                candidates = connection.execute(
+                    """
+                    SELECT reference, canonical_value FROM pii_entities
+                    WHERE project_id = ? AND pii_type = 'PERSON' AND reference LIKE ?
+                    """,
+                    (self.project_id, f"%{suffix}"),
+                ).fetchall()
+                for source, value in candidates:
+                    source_person = source.split("-" + match["role"] + ":", 1)[0]
+                    if self._resolve_person_reference(source_person, confirmed) == match["person"]:
+                        derived[match.group()] = value
+                        break
         for reference, value in sorted(rows, key=lambda row: len(row[0]), reverse=True):
+            text = text.replace(reference, value)
+        for reference, value in derived.items():
             text = text.replace(reference, value)
         return text
 
@@ -512,10 +758,39 @@ def identity_name_context(messages: list[dict], vault: PiiVault) -> dict:
                         (vault.project_id, *chunk),
                     )
                 )
-    identities: dict[str, set[tuple[str, str]]] = {}
+    original_identities: dict[str, set[tuple[str, str]]] = {}
     for reference in known:
         person, role, name = relations[reference]
-        identities.setdefault(person, set()).add((role, name))
+        original_identities.setdefault(person, set()).add((role, name))
+    pairs = []
+    by_name: dict[str, set[str]] = {}
+    for person, name_values in original_identities.items():
+        for _, name in name_values:
+            by_name.setdefault(name, set()).add(person)
+    for name, people in by_name.items():
+        for left, right in combinations(sorted(people), 2):
+            left_unresolved = any(
+                role == "UNRESOLVED" for role, _ in original_identities[left]
+            )
+            right_unresolved = any(
+                role == "UNRESOLVED" for role, _ in original_identities[right]
+            )
+            candidate, canonical = (
+                (left, right)
+                if left_unresolved and not right_unresolved
+                else (right, left)
+                if right_unresolved and not left_unresolved
+                else (right, left)
+            )
+            pairs.append((candidate, canonical, name))
+    shared: dict[tuple[str, str], set[str]] = {}
+    for candidate, canonical, name in pairs:
+        shared.setdefault((candidate, canonical), set()).add(name)
+    statuses = vault.person_link_statuses(shared)
+    canonical_references = vault.canonical_person_references(original_identities)
+    identities: dict[str, set[tuple[str, str]]] = {}
+    for person, name_values in original_identities.items():
+        identities.setdefault(canonical_references[person], set()).update(name_values)
     return {
         "type": "protected_identity_to_name_values",
         "identities": [
@@ -528,12 +803,46 @@ def identity_name_context(messages: list[dict], vault: PiiVault) -> dict:
             }
             for person, name_values in sorted(identities.items())
         ],
+        "person_links": [
+            {
+                "candidate": candidate,
+                "canonical": canonical,
+                "shared_name_values": sorted(names),
+                "status": statuses.get((candidate, canonical), {}).get(
+                    "decision", "unresolved"
+                ),
+                "decision_id": statuses.get((candidate, canonical), {}).get(
+                    "decision_id"
+                ),
+                "supersedes_decision_id": statuses.get(
+                    (candidate, canonical), {}
+                ).get("supersedes_decision_id"),
+            }
+            for (candidate, canonical), names in sorted(shared.items())
+        ],
     }
 
 
 def model_messages(protected_history: list[dict], vault: PiiVault) -> list[dict]:
     """Build the request-only model payload without changing protected history."""
     context = identity_name_context(protected_history, vault)
+    context = {
+        **context,
+        "person_links": [
+            link for link in context["person_links"] if link["status"] != "confirmed"
+        ],
+    }
+    references = {
+        match.group()
+        for message in protected_history
+        for text in _message_texts(message)
+        for match in _PERSON_REFERENCE_IN_TEXT_RE.finditer(text)
+    }
+    canonical = vault.canonical_person_references(references)
+    derived_history = [
+        _replace_message_person_references(message, canonical)
+        for message in protected_history
+    ]
     return [
         {"role": "system", "content": SYSTEM_GUIDANCE},
         {
@@ -541,8 +850,39 @@ def model_messages(protected_history: list[dict], vault: PiiVault) -> list[dict]
             "content": json.dumps(PROTECTED_EVIDENCE_CONTRACT, sort_keys=True),
         },
         {"role": "system", "content": json.dumps(context, sort_keys=True)},
-        *protected_history,
+        *derived_history,
     ]
+
+
+def _message_texts(message: dict) -> list[str]:
+    content = message.get("content")
+    if isinstance(content, str):
+        return [content]
+    return [
+        part["text"]
+        for part in content or []
+        if isinstance(part, dict) and isinstance(part.get("text"), str)
+    ]
+
+
+def _replace_message_person_references(message: dict, canonical: dict[str, str]) -> dict:
+    def replace(text: str) -> str:
+        return _PERSON_REFERENCE_IN_TEXT_RE.sub(
+            lambda match: canonical.get(match.group(), match.group()), text
+        )
+
+    copy = dict(message)
+    content = copy.get("content")
+    if isinstance(content, str):
+        copy["content"] = replace(content)
+    elif isinstance(content, list):
+        copy["content"] = [
+            {**part, "text": replace(part["text"])}
+            if isinstance(part, dict) and isinstance(part.get("text"), str)
+            else part
+            for part in content
+        ]
+    return copy
 
 
 def obfuscate(text: str, detector: Detector, vault: PiiVault) -> str:

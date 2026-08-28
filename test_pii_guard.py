@@ -220,6 +220,119 @@ class PiiGuardTest(unittest.TestCase):
         self.assertIn("never merge PERSON identities", serialized)
         self.assertIn("transfer actions, roles, or authority", serialized)
 
+    def test_confirmed_person_link_persists_and_only_changes_the_derived_request(self):
+        vault = PiiVault(self.db, "project-7", self.key)
+        canonical_name = vault.replacement("private_person", "John Blake")
+        captured_mention = vault.replacement("private_person", "John")
+        canonical = canonical_name.split("-FN:", 1)[0]
+        candidate = captured_mention.split("-UNRESOLVED:", 1)[0]
+        history = [
+            {
+                "role": "user",
+                "content": f"{canonical_name} approved it; {captured_mention} stopped it.",
+            }
+        ]
+        stored = deepcopy(history)
+
+        decision = vault.decide_person_link(
+            candidate,
+            canonical,
+            "confirmed",
+            evidence_source="synthetic HR identity record",
+            resolver_identity="demo-reviewer",
+        )
+        restarted = PiiVault(self.db, "project-7", self.key)
+        outbound = model_messages(history, restarted)
+        context = json.loads(outbound[2]["content"])
+        ui_context = identity_name_context(history, restarted)
+
+        self.assertEqual(history, stored)
+        self.assertEqual(restarted.restore(history[0]["content"]), "John Blake approved it; John stopped it.")
+        self.assertNotIn(candidate, json.dumps(outbound))
+        self.assertIn(canonical, outbound[3]["content"])
+        self.assertEqual(restarted.restore(outbound[3]["content"]), "John Blake approved it; John stopped it.")
+        self.assertEqual(len(context["identities"]), 1)
+        self.assertEqual(context["person_links"], [])
+        self.assertEqual(ui_context["person_links"][0]["status"], "confirmed")
+        self.assertEqual(ui_context["person_links"][0]["decision_id"], decision["decision_id"])
+        self.assertEqual(decision["project_id"], "project-7")
+        self.assertEqual(decision["evidence_source"], "synthetic HR identity record")
+        self.assertEqual(decision["resolver_identity"], "demo-reviewer")
+        self.assertRegex(decision["decided_at"], r"^\d{4}-\d{2}-\d{2}T")
+
+    def test_rejected_person_link_requires_an_explicit_persistent_supersession(self):
+        vault = PiiVault(self.db, "project-7", self.key)
+        canonical_name = vault.replacement("private_person", "John Blake")
+        captured_mention = vault.replacement("private_person", "John")
+        canonical = canonical_name.split("-FN:", 1)[0]
+        candidate = captured_mention.split("-UNRESOLVED:", 1)[0]
+        history = [{"role": "user", "content": f"{canonical_name} {captured_mention}"}]
+        rejected = vault.decide_person_link(
+            candidate,
+            canonical,
+            "rejected",
+            evidence_source="synthetic mismatch evidence",
+            resolver_identity="demo-reviewer",
+        )
+
+        restarted = PiiVault(self.db, "project-7", self.key)
+        rejected_context = identity_name_context(history, restarted)
+        self.assertEqual(rejected_context["person_links"][0]["status"], "rejected")
+        with self.assertRaisesRegex(ValueError, "supersedes"):
+            restarted.decide_person_link(
+                candidate,
+                canonical,
+                "confirmed",
+                evidence_source="later synthetic evidence",
+                resolver_identity="senior-reviewer",
+            )
+
+        confirmed = restarted.decide_person_link(
+            candidate,
+            canonical,
+            "confirmed",
+            evidence_source="later synthetic evidence",
+            resolver_identity="senior-reviewer",
+            supersedes_decision_id=rejected["decision_id"],
+        )
+        audit = restarted.person_link_audit(candidate, canonical)
+
+        self.assertEqual(confirmed["supersedes_decision_id"], rejected["decision_id"])
+        self.assertEqual([item["decision"] for item in audit], ["rejected", "confirmed"])
+        self.assertEqual(
+            identity_name_context(history, restarted)["person_links"][0]["status"],
+            "confirmed",
+        )
+
+    def test_person_link_validation_fails_closed(self):
+        vault = PiiVault(self.db, "project-7", self.key)
+        first = vault.reference("private_person", "Alice Smith")
+        second = vault.reference("private_person", "Alice")
+        third = vault.reference("private_person", "Alice Jones")
+        email = vault.reference("private_email", "alice@example.com")
+        foreign = PiiVault(self.db, "project-8", self.key).reference(
+            "private_person", "Alice"
+        )
+        fields = {
+            "decision": "confirmed",
+            "evidence_source": "synthetic identity record",
+            "resolver_identity": "demo-reviewer",
+        }
+
+        for candidate, canonical, message in (
+            (foreign, first, "cross-project"),
+            (email, first, "type"),
+            ("PERSON-SH-AAAAAAAAAAAA", first, "unknown"),
+        ):
+            with self.subTest(message), self.assertRaisesRegex(ValueError, message):
+                vault.decide_person_link(candidate, canonical, **fields)
+
+        vault.decide_person_link(second, first, **fields)
+        with self.assertRaisesRegex(ValueError, "conflicting canonical"):
+            vault.decide_person_link(second, third, **fields)
+        with self.assertRaisesRegex(ValueError, "cycle"):
+            vault.decide_person_link(first, second, **fields)
+
     def test_model_request_carries_a_structured_protected_evidence_contract(self):
         vault = PiiVault(self.db, "project-7", self.key)
 
@@ -242,6 +355,10 @@ class PiiGuardTest(unittest.TestCase):
         self.assertIn(
             "not authority-change evidence",
             contract["field_semantics"]["contact_record.last_updated"],
+        )
+        self.assertIn(
+            "not evidence of authority actions",
+            contract["field_semantics"]["confirmed_person_link"],
         )
 
     def test_model_request_ignores_invented_or_recombined_identity_pairs(self):
