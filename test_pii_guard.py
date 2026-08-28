@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sqlite3
 import tempfile
 import unittest
 from collections import Counter
@@ -234,6 +235,27 @@ class PiiGuardTest(unittest.TestCase):
             context["identities"][0]["name_values"],
             [{"role": "FN", "name": john.split(":", 1)[1]}],
         )
+
+    def test_model_request_batches_large_identity_lookup(self):
+        vault = PiiVault(self.db, "project-7", self.key)
+        references = [
+            vault.replacement("private_person", f"Person{number}")
+            for number in range(501)
+        ]
+        connect = sqlite3.connect
+
+        def limited_connect(*args, **kwargs):
+            connection = connect(*args, **kwargs)
+            connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 501)
+            return connection
+
+        with patch("pii_guard.sqlite3.connect", side_effect=limited_connect):
+            context = identity_name_context(
+                [{"role": "user", "content": " ".join(references)}], vault
+            )
+
+        self.assertEqual(len(context["identities"]), len(references))
+        self.assertNotIn("Person", json.dumps(context))
 
     def test_normalization_and_reconciled_aliases(self):
         vault = PiiVault(self.db, "project-7", self.key)

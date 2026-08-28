@@ -77,6 +77,7 @@ _REFERENCE_RE = re.compile(
 )
 MAX_CHUNK_BYTES = 7_500
 CHUNK_OVERLAP_CHARS = 512
+_SQLITE_LOOKUP_CHUNK_SIZE = 500
 _HONORIFICS = {
     "mr",
     "mrs",
@@ -478,16 +479,19 @@ def identity_name_context(messages: list[dict], vault: PiiVault) -> dict:
                 )
     known = set()
     if relations:
-        placeholders = ",".join("?" for _ in relations)
+        references = tuple(relations)
         with vault._connect() as connection:
-            known = {
-                row[0]
-                for row in connection.execute(
-                    f"SELECT reference FROM pii_entities WHERE project_id = ? "
-                    f"AND reference IN ({placeholders})",
-                    (vault.project_id, *relations),
+            for start in range(0, len(references), _SQLITE_LOOKUP_CHUNK_SIZE):
+                chunk = references[start : start + _SQLITE_LOOKUP_CHUNK_SIZE]
+                placeholders = ",".join("?" for _ in chunk)
+                known.update(
+                    row[0]
+                    for row in connection.execute(
+                        f"SELECT reference FROM pii_entities WHERE project_id = ? "
+                        f"AND reference IN ({placeholders})",
+                        (vault.project_id, *chunk),
+                    )
                 )
-            }
     identities: dict[str, set[tuple[str, str]]] = {}
     for reference in known:
         person, role, name = relations[reference]
