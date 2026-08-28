@@ -14,7 +14,8 @@ _Side-by-side demonstration using synthetic personal information._
 
 1. A local PII detector returns sensitive text spans.
 2. `pii_guard.py` replaces them with stable, typed project references.
-3. Only protected messages and preservation guidance go to the LLM.
+3. Only protected messages, preservation guidance, and a derived opaque identity map go
+   to the LLM.
 4. The protected response remains canonical; a project-scoped vault can restore a copy.
 
 Full names expose person identity and component roles alongside atomic name values, for
@@ -31,6 +32,14 @@ Atomic name values are normalized with Unicode NFKC, collapsed whitespace, and U
 case folding before their project ID and type are included in the keyed HMAC. Honorifics
 remain visible and are excluded from the name value. The vault retains the reverse map;
 neither normalized nor original names are added to the downstream model payload.
+
+For each model request, the guard derives an opaque identity-to-name-value map from
+vault-emitted pairs in the protected history. Repeated `NAME` references make exact
+normalized lexical equality explicit without merging the surrounding `PERSON`
+identities or transferring their actions, roles, or authority. The derivation validates
+opaque pair references without reading mapped values, so model-invented combinations are
+ignored. This request-only map is inspectable in the protected UI lane; it is not added
+to canonical conversation or Markdown memory.
 
 The detector and vault remain inside the trusted boundary. The reverse map is never
 sent to the downstream LLM. Project IDs are included in keyed fingerprints, preventing
@@ -86,6 +95,8 @@ python3 demo-ui/server.py
 
 Open the configured local address, load the synthetic scenario, and compare the
 authorised user view with the exact protected history retained for the LLM and memory.
+The protected lane also exposes the request-only identity map separately from that
+canonical history.
 The optional web-search example resolves only the authorised domain argument at the
 trusted tool boundary and protects the result before returning it to the LLM.
 
@@ -93,7 +104,8 @@ trusted tool boundary and protects the result before returning it to the LLM.
 
 ```python
 vault = PiiVault("project-vault.sqlite3", project_id, secret_key)
-outbound, _ = protect_messages(history, detector, vault)
+protected, _ = protect_messages(history, detector, vault)
+outbound = model_messages(protected[1:], vault)
 ```
 
 Filter newly ingested user and tool content. Retrieved protected history does not need

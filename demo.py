@@ -8,7 +8,7 @@ import os
 import urllib.request
 from pathlib import Path
 
-from pii_guard import PiiVault, PrivacyFilterClient, protect_messages
+from pii_guard import PiiVault, PrivacyFilterClient, model_messages, protect_messages
 
 
 def load_env(path: str | Path | None = None) -> None:
@@ -82,9 +82,10 @@ def main():
     if not key:
         parser.error("PII_VAULT_KEY must contain a stable project-vault secret")
     project_vault = PiiVault(args.vault_db, args.project_id, key)
-    outbound, project_vault = protect_messages(
+    protected, project_vault = protect_messages(
         [{"role": "user", "content": args.message}], detector, project_vault
     )
+    outbound = model_messages(protected[1:], project_vault)
     print("\nOUTBOUND TO LLM (must contain no original PII)\n")
     print(json.dumps(outbound, indent=2))
 

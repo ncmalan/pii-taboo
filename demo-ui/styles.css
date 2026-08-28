@@ -151,6 +151,10 @@ input:focus-visible {
 .channel-symbol { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid currentColor; border-radius: 50%; font-weight: 800; }
 .rail-head { display: grid; place-items: center; color: #fff4e7; background: var(--copper); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.14em; border-bottom: 1px solid #d4875d; }
 .copy-button { margin-left: auto; color: var(--seafoam); font-size: 0.76rem; }
+.identity-context { position: relative; margin-left: auto; color: var(--seafoam); font-size: 0.72rem; }
+.identity-context summary { cursor: pointer; font-weight: 700; }
+.identity-context pre { position: absolute; z-index: 8; right: 0; width: min(560px, calc(100vw - 48px)); max-height: 45vh; overflow: auto; padding: 14px; color: var(--ink-text); background: var(--ink-lift); border: 1px solid var(--seafoam); border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.identity-context + .copy-button { margin-left: 0; }
 
 .transcript { min-height: 420px; }
 .empty-state { min-height: max(430px, calc(100dvh - 343px)); display: grid; place-content: center; justify-items: center; padding: 48px 20px; color: #f0f6f4; background: var(--ink); text-align: center; }
