@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import json
 import re
 import tempfile
 import unittest
@@ -65,6 +66,23 @@ class DemoServerConfigTest(unittest.TestCase):
         finally:
             server.LLM_URL, server.LLM_API_KEY = original_url, original_key
 
+    def test_synthetic_contact_tool_describes_its_evidence_limits(self):
+        result = json.loads(server.TOOL_RESULT)
+
+        self.assertEqual(
+            result["evidence"]["provenance"],
+            "synthetic project contact directory",
+        )
+        self.assertEqual(result["last_updated"]["kind"], "record_metadata")
+        self.assertIn(
+            "authority revocation",
+            result["last_updated"]["not_evidence_of"],
+        )
+        self.assertIn(
+            "identity equivalence across person mentions",
+            result["evidence"]["not_authoritative_for"],
+        )
+
     def test_completion_exposes_request_only_identity_context_to_protected_ui(self):
         payload = {
             "session_id": "session-2",
@@ -93,7 +111,7 @@ class DemoServerConfigTest(unittest.TestCase):
         self.assertEqual(
             result["model_context"], server.identity_name_context(canonical, vault)
         )
-        self.assertEqual(outbound[2:], canonical)
+        self.assertEqual(outbound[3:], canonical)
         self.assertEqual(
             server.conversations[("session-2", "project-7")]["protected_history"][0],
             canonical[0],

@@ -50,7 +50,19 @@ TOOL_RESULT = json.dumps(
         "name": "John Blake",
         "email": "john.blake@example.com",
         "phone": "+27 82 555 0199",
-        "last_updated": "2026-08-14",
+        "last_updated": {
+            "value": "2026-08-14",
+            "kind": "record_metadata",
+            "not_evidence_of": ["authority revocation", "authority reassignment"],
+        },
+        "evidence": {
+            "provenance": "synthetic project contact directory",
+            "authoritative_for": ["contact fields returned for this record"],
+            "not_authoritative_for": [
+                "identity equivalence across person mentions",
+                "authority or authority-change events",
+            ],
+        },
     },
     indent=2,
 )
@@ -306,7 +318,7 @@ def complete_chat(payload: dict) -> dict:
     state["pending"] = None
     return {
         "turns": state["turns"],
-        "model_context": json.loads(outbound[1]["content"]),
+        "model_context": json.loads(outbound[2]["content"]),
         "metrics": {
             "filter_ms": filter_ms,
             "llm_ms": llm_ms,

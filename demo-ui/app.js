@@ -281,7 +281,7 @@ async function sendMessage(event) {
 }
 
 function loadSample() {
-  messageInput.value = "On 2026-08-01 John Blake told Alice to approve the migration. On 2026-08-14 John told Bob Jones to stop it. What inconsistency should the team investigate?";
+  messageInput.value = "On 2026-08-01 John Blake told Alice to approve the migration. On 2026-08-14 John told Bob Jones to stop it. Which facts are verified, which identity or authority questions remain unresolved, and what evidence must be checked before calling this a contradiction?";
   toolToggle.checked = true;
   messageInput.focus();
 }
