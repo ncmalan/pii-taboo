@@ -6,6 +6,10 @@ pseudonymisation around an LLM call.
 It keeps the canonical conversation safe for model, memory, log, and cache reuse while
 restoring a separate copy only at an authorised presentation boundary.
 
+![PII Taboo showing an authorised user view beside the protected LLM view](docs/assets/pii-taboo-demo.webp)
+
+_Side-by-side demonstration using synthetic personal information._
+
 ## What it proves
 
 1. A local PII detector returns sensitive text spans.
