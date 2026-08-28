@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.private/
+.playwright-cli/
+.playwright-mcp/
+output/
+pii-mirror-*.png
+pii-taboo-*.png
+.pii-vault.sqlite3*
+demo-ui/.demo-vault.sqlite3*

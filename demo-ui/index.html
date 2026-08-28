@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%2377d9c4' d='M3 4h17v17H3z'/%3E%3Cpath fill='%23b86132' d='M12 11h17v17H12z'/%3E%3C/svg%3E" />
+    <title>PII Taboo — live obfuscation proof</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="PII Taboo home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i></span>
+          <span>PII Taboo</span>
+        </a>
+        <div class="service-status" aria-label="Service status">
+          <span id="privacyStatus"><i class="status-dot"></i> Privacy Filter <b>checking…</b></span>
+          <span id="qwenStatus"><i class="status-dot"></i> LLM <b>checking…</b></span>
+        </div>
+        <div class="measurements" aria-live="polite">
+          <span>Filter <b id="filterMetric">—</b></span>
+          <span>LLM <b id="llmMetric">—</b></span>
+          <span>Handles <b id="handleMetric">0</b></span>
+        </div>
+        <button class="quiet-button model-button" id="modelButton" type="button" popovertarget="modelPopover">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>
+          Model
+        </button>
+        <button class="quiet-button" id="resetButton" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6M20 20v-6h-6M5.6 15A7.5 7.5 0 0 0 18 17.5M18.4 9A7.5 7.5 0 0 0 6 6.5" /></svg>
+          New conversation
+        </button>
+      </header>
+
+      <section class="model-popover" id="modelPopover" popover aria-labelledby="modelPopoverTitle">
+        <form id="modelForm">
+          <div class="popover-heading">
+            <div><span>Inference route</span><h2 id="modelPopoverTitle">Model override</h2></div>
+            <button class="popover-close" type="button" popovertarget="modelPopover" popovertargetaction="hide" aria-label="Close model settings">×</button>
+          </div>
+          <label for="modelEndpoint">OpenAI-compatible endpoint</label>
+          <input id="modelEndpoint" name="url" type="url" required autocomplete="off" value="http://127.0.0.1:8080/v1/chat/completions" />
+          <label for="modelApiKey">API key <span>optional for local endpoints</span></label>
+          <input id="modelApiKey" name="api_key" type="password" autocomplete="new-password" />
+          <label for="modelName">Model name</label>
+          <input id="modelName" name="model" required autocomplete="off" value="local-model" />
+          <p>The key is held in this tab's session storage, sent only to the local demo server for the outbound model request, and cleared when the tab closes.</p>
+          <div class="popover-actions">
+            <button class="popover-secondary" id="modelDefaults" type="button">Use defaults</button>
+            <button class="popover-primary" type="submit">Apply for this tab</button>
+          </div>
+        </form>
+      </section>
+
+      <main class="workspace">
+        <div class="lane-heads">
+          <section class="lane-title human-title">
+            <span class="channel-symbol">H</span>
+            <div><h1>User View</h1><p>What people see</p></div>
+          </section>
+          <div class="rail-head" aria-hidden="true">SYNC</div>
+          <section class="lane-title protected-title">
+            <span class="channel-symbol">P</span>
+            <div><h2>LLM View</h2><p>What LLM + memory + logs retain</p></div>
+            <button class="copy-button" id="copyButton" type="button" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></svg>
+              Copy LLM view
+            </button>
+          </section>
+        </div>
+
+        <section class="transcript" id="transcript" aria-live="polite" aria-label="Conversation comparison">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-rule"><span></span><i></i><span></span></div>
+            <h2>One conversation. Two safe views.</h2>
+            <p>Send synthetic PII through the live pipeline. Every turn will align across the User and LLM views.</p>
+            <button type="button" id="sampleButton">Load the contradiction scenario</button>
+          </div>
+        </section>
+      </main>
+
+      <footer class="composer-wrap">
+        <div class="composer-meta">
+          <label for="projectId">Project namespace</label>
+          <input id="projectId" value="demo-project" maxlength="64" pattern="[A-Za-z0-9_-]+" />
+          <span>Synthetic data only</span>
+        </div>
+        <form class="composer" id="composer">
+          <label class="sr-only" for="messageInput">Message</label>
+          <textarea id="messageInput" rows="2" placeholder="Ask the LLM something containing synthetic names, dates, emails, or phone numbers…" required></textarea>
+          <div class="tool-option">
+            <label class="tool-toggle">
+              <input type="checkbox" id="toolToggle" />
+              <span class="check-box" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg></span>
+              Include synthetic tool lookup
+            </label>
+            <span class="tool-help">
+              <button class="info-button" type="button" aria-describedby="toolHelpText" aria-label="About synthetic tool lookup">i</button>
+              <span class="info-tooltip" id="toolHelpText" role="tooltip">Adds a deterministic fake contact-record tool call and synthetic result to the next turn, so you can inspect PII protection across tool traffic. It does not call the web; explicit domain web-search requests route automatically.</span>
+            </span>
+          </div>
+          <button class="send-button" id="sendButton" type="submit">
+            <span>Send</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 15-8-4 16-3-6-8-2Z" /><path d="m12 14 7-10" /></svg>
+          </button>
+        </form>
+        <p class="error-message" id="errorMessage" role="alert"></p>
+      </footer>
+    </div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
