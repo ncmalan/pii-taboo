@@ -21,10 +21,12 @@ Unambiguous dates use `-DAY-NUM` / `-DAY-ISO`, `-MONTH-NAME-ENG` / `-MONTH-ISO`,
 `-YEAR`, allowing Qwen to select a representation and reorder opaque components while
 the presentation filter restores the corresponding values.
 
-The User View restores PII for the authorised viewer. The LLM View is the exact
-protected history sent to the configured model and retained for memory, logs, and cache
-reuse. The optional tool lookup adds a deterministic fake contact lookup and synthetic
-result; it does not call the web.
+The User View restores PII for the authorised viewer. The LLM View shows the canonical
+protected history retained for memory, logs, and cache reuse, plus an inspectable
+request-only identity-to-name-value map derived from vault-emitted opaque pairs. The map
+is sent to the configured model but is not added to canonical history; invented pairs
+are ignored without reading mapped values. The optional tool lookup adds a deterministic
+fake contact lookup and synthetic result; it does not call the web.
 
 The Model popover can override the configured OpenAI-compatible endpoint, API key, and
 model name for the current browser tab. These values use `sessionStorage`, return to the

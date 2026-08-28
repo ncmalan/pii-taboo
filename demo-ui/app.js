@@ -20,11 +20,13 @@ const modelEndpoint = document.querySelector("#modelEndpoint");
 const modelApiKey = document.querySelector("#modelApiKey");
 const modelName = document.querySelector("#modelName");
 const modelDefaults = document.querySelector("#modelDefaults");
+const identityContext = document.querySelector("#identityContext");
 
 const HANDLE_PATTERN = /((?:ACCOUNT|ADDRESS|EMAIL|NAME|PERSON|PHONE|URL|DATE|SECRET)-SH-[A-Z2-7]{12}(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|UNRESOLVED|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?)/g;
 const MODEL_STORAGE_KEY = "pii-taboo-model-config";
 let sessionId = crypto.randomUUID();
 let turns = [];
+let modelContext = null;
 let sending = false;
 let defaultModelConfig = {
   url: modelEndpoint.value,
@@ -135,6 +137,9 @@ function messageNode(turn, protectedView) {
 }
 
 function render() {
+  identityContext.textContent = modelContext
+    ? JSON.stringify(modelContext, null, 2)
+    : "No protected person references yet.";
   transcript.replaceChildren();
   if (!turns.length) {
     const empty = document.createElement("div");
@@ -237,6 +242,7 @@ async function sendMessage(event) {
       include_tool: includeTool,
     });
     turns[turns.length - 1] = protectedResult.turn;
+    modelContext = protectedResult.model_context;
     filterMetric.textContent = `${protectedResult.metrics.filter_ms} ms`;
     handleMetric.textContent = protectedResult.metrics.handles;
     render();
@@ -254,6 +260,7 @@ async function sendMessage(event) {
       model_config: completionModelConfig,
     });
     turns = result.turns;
+    modelContext = result.model_context;
     filterMetric.textContent = `${result.metrics.filter_ms} ms`;
     llmMetric.textContent = `${(result.metrics.llm_ms / 1000).toFixed(1)} s`;
     handleMetric.textContent = result.metrics.handles;
@@ -288,6 +295,7 @@ async function resetConversation() {
   }
   sessionId = crypto.randomUUID();
   turns = [];
+  modelContext = null;
   filterMetric.textContent = "—";
   llmMetric.textContent = "—";
   handleMetric.textContent = "0";

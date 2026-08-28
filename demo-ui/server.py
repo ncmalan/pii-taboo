@@ -19,7 +19,13 @@ PROJECT_DIR = DEMO_DIR.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 from demo import call_llm  # noqa: E402
-from pii_guard import PiiVault, PrivacyFilterClient, SYSTEM_GUIDANCE, protect_messages  # noqa: E402
+from pii_guard import (  # noqa: E402
+    PiiVault,
+    PrivacyFilterClient,
+    identity_name_context,
+    model_messages,
+    protect_messages,
+)
 
 
 PRIVACY_URL = os.getenv("PII_PRIVACY_URL", "http://127.0.0.1:8081")
@@ -201,6 +207,7 @@ def protect_user(payload: dict) -> dict:
     }
     return {
         "turn": turn,
+        "model_context": identity_name_context(state["protected_history"], vault),
         "metrics": {
             "filter_ms": filter_ms,
             "handles": handle_count(state["protected_history"]),
@@ -274,10 +281,11 @@ def complete_chat(payload: dict) -> dict:
 
     llm_started = time.monotonic()
     llm_url, llm_model, api_key = model_config(payload)
+    outbound = model_messages(history, vault)
     raw_answer = call_llm(
         llm_url,
         llm_model,
-        [{"role": "system", "content": SYSTEM_GUIDANCE}, *history],
+        outbound,
         api_key=api_key or None,
         reasoning_effort=LLM_REASONING_EFFORT if llm_url == LLM_URL else None,
     )
@@ -298,6 +306,7 @@ def complete_chat(payload: dict) -> dict:
     state["pending"] = None
     return {
         "turns": state["turns"],
+        "model_context": json.loads(outbound[1]["content"]),
         "metrics": {
             "filter_ms": filter_ms,
             "llm_ms": llm_ms,

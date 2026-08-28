@@ -25,7 +25,12 @@ SYSTEM_GUIDANCE = (
     "PERSON-SH-ID-FN:NAME-SH-ID. The PERSON reference carries identity and component role; "
     "the NAME reference carries only normalized atomic name equality. The same NAME "
     "reference can occur with different PERSON identities and does not prove that the "
-    "people are the same. A PERSON reference ending in -UNRESOLVED is a distinct mention "
+    "people are the same. Matching NAME references may raise an identity question, but "
+    "never merge PERSON identities, transfer actions, roles, or authority, or privilege "
+    "one candidate. State relevant protected name-text matches while keeping the identity "
+    "relationship unresolved. Treat exact equality only when NAME references repeat; do "
+    "not request or infer plaintext or reverse-map values. A PERSON reference ending in "
+    "-UNRESOLVED is a distinct mention "
     "whose first-name, last-name, or mononym role is unknown; preserve the complete pair "
     "unchanged and never convert it to -FN or -LN. Full person references use -FN or -LN "
     "for the first-name or last-name component. Prefer the -FN pair alone for "
@@ -58,6 +63,10 @@ _TYPE_NAMES = {
 _REFERENCE_ID = r"[A-Z2-7]{12}"
 _PERSON_NAME_REFERENCE = (
     rf"PERSON-SH-{_REFERENCE_ID}-(?:FN|LN|UNRESOLVED):NAME-SH-{_REFERENCE_ID}"
+)
+_PERSON_NAME_RELATION_RE = re.compile(
+    rf"\b(?P<person>PERSON-SH-{_REFERENCE_ID})-"
+    rf"(?P<role>FN|LN|UNRESOLVED):(?P<name>NAME-SH-{_REFERENCE_ID})\b"
 )
 _ATOMIC_REFERENCE = (
     rf"(?:{'|'.join(_TYPE_NAMES.values())})-SH-{_REFERENCE_ID}"
@@ -450,6 +459,62 @@ def _merge_overlapping_spans(spans: Iterable[Span]) -> list[Span]:
 
 
 Detector = Callable[[str], Iterable[Span]]
+
+
+def identity_name_context(messages: list[dict], vault: PiiVault) -> dict:
+    """Derive an opaque identity/name-value map from already protected messages."""
+    relations = {}
+    for message in messages:
+        content = message.get("content")
+        texts = [content] if isinstance(content, str) else [
+            part["text"]
+            for part in content or []
+            if isinstance(part, dict) and isinstance(part.get("text"), str)
+        ]
+        for text in texts:
+            for match in _PERSON_NAME_RELATION_RE.finditer(text):
+                relations[match.group()] = (
+                    match["person"], match["role"], match["name"]
+                )
+    known = set()
+    if relations:
+        placeholders = ",".join("?" for _ in relations)
+        with vault._connect() as connection:
+            known = {
+                row[0]
+                for row in connection.execute(
+                    f"SELECT reference FROM pii_entities WHERE project_id = ? "
+                    f"AND reference IN ({placeholders})",
+                    (vault.project_id, *relations),
+                )
+            }
+    identities: dict[str, set[tuple[str, str]]] = {}
+    for reference in known:
+        person, role, name = relations[reference]
+        identities.setdefault(person, set()).add((role, name))
+    return {
+        "type": "protected_identity_to_name_values",
+        "identities": [
+            {
+                "person": person,
+                "name_values": [
+                    {"role": role, "name": name}
+                    for role, name in sorted(name_values)
+                ],
+            }
+            for person, name_values in sorted(identities.items())
+        ],
+    }
+
+
+def model_messages(protected_history: list[dict], vault: PiiVault) -> list[dict]:
+    """Build the request-only model payload without changing protected history."""
+    context = identity_name_context(protected_history, vault)
+    return [
+        {"role": "system", "content": SYSTEM_GUIDANCE},
+        {"role": "system", "content": json.dumps(context, sort_keys=True)},
+        *protected_history,
+    ]
 
 
 def obfuscate(text: str, detector: Detector, vault: PiiVault) -> str:

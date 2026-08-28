@@ -1,12 +1,23 @@
+import json
 import os
 import re
 import tempfile
 import unittest
+from collections import Counter
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
 from demo import load_env
-from pii_guard import PiiVault, PrivacyFilterClient, Span, obfuscate, protect_messages
+from pii_guard import (
+    PiiVault,
+    PrivacyFilterClient,
+    Span,
+    identity_name_context,
+    model_messages,
+    obfuscate,
+    protect_messages,
+)
 
 
 class PiiGuardTest(unittest.TestCase):
@@ -141,6 +152,87 @@ class PiiGuardTest(unittest.TestCase):
         self.assertEqual(
             vault.replacement("private_person", "JOHN").split(":", 1)[1],
             john_name,
+        )
+
+    def test_model_request_explains_zero_one_and_many_shared_name_values(self):
+        cases = {
+            "no match": (["Alice", "Bob"], 1),
+            "one shared value": (["John Blake", "John"], 2),
+            "several people sharing a value": (["John Blake", "John Smith", "John"], 3),
+        }
+
+        for number, (label, (names, shared_count)) in enumerate(cases.items()):
+            with self.subTest(label):
+                vault = PiiVault(self.db, f"project-{number}", self.key)
+                references = [vault.replacement("private_person", name) for name in names]
+                history = [{"role": "user", "content": " ".join(references)}]
+                canonical = deepcopy(history)
+                context = identity_name_context(history, vault)
+                outbound = model_messages(history, vault)
+
+                self.assertEqual(history, canonical)
+                self.assertEqual(json.loads(outbound[1]["content"]), context)
+                self.assertEqual(outbound[2:], history)
+                self.assertEqual(len(context["identities"]), len(references))
+                counts = Counter(
+                    value["name"]
+                    for identity in context["identities"]
+                    for value in identity["name_values"]
+                )
+                self.assertEqual(max(counts.values()), shared_count)
+
+    def test_model_request_context_is_project_scoped_restart_safe_and_value_free(self):
+        first = PiiVault(self.db, "project-7", self.key)
+        protected = first.replacement("private_person", "John Blake")
+        standalone = first.replacement("private_person", "John")
+        history = [{"role": "user", "content": f"{protected}; {standalone}"}]
+        first_context = identity_name_context(history, first)
+
+        restarted = PiiVault(self.db, "project-7", self.key)
+        restarted_history = [
+            {
+                "role": "user",
+                "content": (
+                    f'{restarted.replacement("private_person", "John Blake")}; '
+                    f'{restarted.replacement("private_person", "John")}'
+                ),
+            }
+        ]
+        other_project = PiiVault(self.db, "project-8", self.key)
+        other_history = [
+            {
+                "role": "user",
+                "content": other_project.replacement("private_person", "John"),
+            }
+        ]
+
+        self.assertEqual(
+            identity_name_context(restarted_history, restarted), first_context
+        )
+        self.assertNotEqual(
+            identity_name_context(other_history, other_project), first_context
+        )
+        serialized = json.dumps(model_messages(history, first))
+        self.assertNotIn("John", serialized)
+        self.assertNotIn("Blake", serialized)
+        self.assertIn("Matching NAME references", serialized)
+        self.assertIn("never merge PERSON identities", serialized)
+        self.assertIn("transfer actions, roles, or authority", serialized)
+
+    def test_model_request_ignores_invented_or_recombined_identity_pairs(self):
+        vault = PiiVault(self.db, "project-7", self.key)
+        john = vault.replacement("private_person", "John Blake").split()[0]
+        alice = vault.replacement("private_person", "Alice")
+        invented = f'{john.split(":", 1)[0]}:{alice.split(":", 1)[1]}'
+
+        context = identity_name_context(
+            [{"role": "assistant", "content": f"{john} {invented}"}], vault
+        )
+
+        self.assertEqual(len(context["identities"]), 1)
+        self.assertEqual(
+            context["identities"][0]["name_values"],
+            [{"role": "FN", "name": john.split(":", 1)[1]}],
         )
 
     def test_normalization_and_reconciled_aliases(self):
