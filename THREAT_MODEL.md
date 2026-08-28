@@ -10,6 +10,7 @@ inside a trusted presentation or tool boundary.
 - The reference-to-value map and its fingerprinting key.
 - Project separation between otherwise identical values.
 - Canonical protected conversation and memory content.
+- Project-scoped person-link decisions and their audit provenance.
 
 ## Trust boundaries
 
@@ -23,6 +24,8 @@ tool and its operator.
 - Stable, typed, project-scoped replacement references.
 - No reverse map in the downstream model payload.
 - Protected history remains protected across turns and restarts.
+- Confirmed person links canonicalize derived model requests without rewriting protected
+  history; rejected links remain active until explicitly superseded.
 - Existing references are not reprocessed as new PII.
 - Unknown or overlapping detector spans fail rather than silently corrupting text.
 
@@ -33,6 +36,8 @@ tool and its operator.
 - Stable references permit correlation inside their project scope.
 - The LLM can alter, truncate, invent, or omit references.
 - The SQLite demonstration vault is not encrypted and has no user authorisation model.
+- The trusted identity resolver is an unauthenticated demo control, not a production audit
+  or approval boundary.
 - Local file permissions do not protect against a compromised host or privileged user.
 - Browser overrides place an optional API key in tab-scoped session storage.
 - Restoration does not itself prove that the viewer or tool is authorised.

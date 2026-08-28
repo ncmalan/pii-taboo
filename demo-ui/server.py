@@ -196,6 +196,18 @@ def handle_count(history: list[dict]) -> int:
     )
 
 
+def trusted_person_links(context: dict, vault: PiiVault) -> list[dict]:
+    """Restore candidate labels only for the trusted demo UI response."""
+    return [
+        {
+            **link,
+            "candidate_value": vault.restore(link["candidate"]),
+            "canonical_value": vault.restore(link["canonical"]),
+        }
+        for link in context["person_links"]
+    ]
+
+
 def protect_user(payload: dict) -> dict:
     vault, state = request_context(payload, require_message=True)
     if state["pending"]:
@@ -217,9 +229,11 @@ def protect_user(payload: dict) -> dict:
         "include_tool": bool(payload.get("include_tool")),
         "filter_ms": filter_ms,
     }
+    identity_status = identity_name_context(state["protected_history"], vault)
     return {
         "turn": turn,
-        "model_context": identity_name_context(state["protected_history"], vault),
+        "identity_status": identity_status,
+        "person_links": trusted_person_links(identity_status, vault),
         "metrics": {
             "filter_ms": filter_ms,
             "handles": handle_count(state["protected_history"]),
@@ -316,15 +330,43 @@ def complete_chat(payload: dict) -> dict:
     state["protected_history"] = history
     state["turns"].extend(new_turns)
     state["pending"] = None
+    identity_status = identity_name_context(history, vault)
     return {
         "turns": state["turns"],
-        "model_context": json.loads(outbound[2]["content"]),
+        "identity_status": identity_status,
+        "person_links": trusted_person_links(identity_status, vault),
         "metrics": {
             "filter_ms": filter_ms,
             "llm_ms": llm_ms,
             "handles": handle_count(history),
             "messages": len(state["turns"]),
         },
+    }
+
+
+def decide_person_link(payload: dict) -> dict:
+    vault, state = request_context(payload)
+    candidate = payload.get("candidate_reference")
+    canonical = payload.get("canonical_reference")
+    context = identity_name_context(state["protected_history"], vault)
+    if not any(
+        item["candidate"] == candidate and item["canonical"] == canonical
+        for item in context["person_links"]
+    ):
+        raise ValueError("person link is not a candidate in this protected conversation")
+    decision = vault.decide_person_link(
+        candidate,
+        canonical,
+        payload.get("decision"),
+        evidence_source=payload.get("evidence_source"),
+        resolver_identity=payload.get("resolver_identity"),
+        supersedes_decision_id=payload.get("supersedes_decision_id"),
+    )
+    identity_status = identity_name_context(state["protected_history"], vault)
+    return {
+        "decision": decision,
+        "identity_status": identity_status,
+        "person_links": trusted_person_links(identity_status, vault),
     }
 
 
@@ -372,6 +414,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, complete_chat(payload))
             if path == "/api/chat":
                 return self._json(200, chat(payload))
+            if path == "/api/person-links/decide":
+                return self._json(200, decide_person_link(payload))
             if path == "/api/reset":
                 session_id = payload.get("session_id")
                 for key in [key for key in conversations if key[0] == session_id]:

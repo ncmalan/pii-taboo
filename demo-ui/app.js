@@ -21,12 +21,19 @@ const modelApiKey = document.querySelector("#modelApiKey");
 const modelName = document.querySelector("#modelName");
 const modelDefaults = document.querySelector("#modelDefaults");
 const identityContext = document.querySelector("#identityContext");
+const personLinkCount = document.querySelector("#personLinkCount");
+const personLinkCandidates = document.querySelector("#personLinkCandidates");
+const personLinkDecisions = document.querySelector("#personLinkDecisions");
+const personLinkFeedback = document.querySelector("#personLinkFeedback");
+const resolverIdentity = document.querySelector("#resolverIdentity");
+const evidenceSource = document.querySelector("#evidenceSource");
 
 const HANDLE_PATTERN = /((?:ACCOUNT|ADDRESS|EMAIL|NAME|PERSON|PHONE|URL|DATE|SECRET)-SH-[A-Z2-7]{12}(?:-(?:MONTH-NAME-ENG|MONTH-ISO|DAY-NUM|DAY-ISO|UNRESOLVED|FN|LN|USER|DOMAIN|DAY|MONTH|YEAR))?)/g;
 const MODEL_STORAGE_KEY = "pii-taboo-model-config";
 let sessionId = crypto.randomUUID();
 let turns = [];
-let modelContext = null;
+let identityStatus = null;
+let personLinks = [];
 let sending = false;
 let defaultModelConfig = {
   url: modelEndpoint.value,
@@ -136,10 +143,80 @@ function messageNode(turn, protectedView) {
   return article;
 }
 
+async function decidePersonLink(link, decision, button) {
+  if (!resolverIdentity.reportValidity() || !evidenceSource.reportValidity()) return;
+  button.disabled = true;
+  personLinkFeedback.textContent = "Recording trusted decision…";
+  try {
+    const result = await post("/api/person-links/decide", {
+      session_id: sessionId,
+      project_id: projectInput.value.trim(),
+      candidate_reference: link.candidate,
+      canonical_reference: link.canonical,
+      decision,
+      evidence_source: evidenceSource.value.trim(),
+      resolver_identity: resolverIdentity.value.trim(),
+      ...(link.decision_id ? { supersedes_decision_id: link.decision_id } : {}),
+    });
+    identityStatus = result.identity_status;
+    personLinks = result.person_links;
+    const action = link.decision_id ? "Superseding" : "Recorded";
+    personLinkFeedback.textContent = `${action} decision #${result.decision.decision_id}: ${decision}.`;
+    render();
+  } catch (error) {
+    personLinkFeedback.textContent = error.message;
+    button.disabled = false;
+  }
+}
+
+function renderPersonLinks() {
+  const proposals = personLinks.filter((link) => link.status === "unresolved");
+  const decisions = personLinks.filter((link) => link.status !== "unresolved");
+  personLinkCount.textContent = proposals.length;
+  personLinkCandidates.replaceChildren();
+  personLinkDecisions.replaceChildren();
+  if (!proposals.length) personLinkCandidates.textContent = "No unresolved proposals.";
+  if (!decisions.length) personLinkDecisions.textContent = "No recorded decisions yet.";
+  personLinks.forEach((link) => {
+    const item = document.createElement("article");
+    item.className = "person-link-candidate";
+    const identity = document.createElement("div");
+    identity.className = "person-link-identity";
+    const values = document.createElement("strong");
+    values.textContent = `${link.candidate_value} → ${link.canonical_value}`;
+    const references = document.createElement("code");
+    references.textContent = `${link.candidate} → ${link.canonical}`;
+    identity.append(values, references);
+    const status = document.createElement("span");
+    status.className = `person-link-status is-${link.status}`;
+    status.textContent = link.status;
+    const actions = document.createElement("div");
+    actions.className = "person-link-actions";
+    ["confirmed", "rejected"].forEach((decision) => {
+      if (link.status === decision) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      const label = decision === "confirmed" ? "Confirm" : "Reject";
+      button.textContent = link.status === "unresolved" ? label : `Supersede: ${label}`;
+      button.ariaLabel =
+        `${button.textContent}: ${link.candidate_value} as ${link.canonical_value}`;
+      button.addEventListener("click", () => decidePersonLink(link, decision, button));
+      actions.append(button);
+    });
+    item.append(identity, status, actions);
+    (link.status === "unresolved" ? personLinkCandidates : personLinkDecisions).append(item);
+  });
+}
+
 function render() {
-  identityContext.textContent = modelContext
-    ? JSON.stringify(modelContext, null, 2)
+  identityContext.textContent = identityStatus
+    ? JSON.stringify({
+        ...identityStatus,
+        type: "protected_identity_resolution_status",
+        note: "UI-only status; confirmed candidate links are omitted from the outbound model context.",
+      }, null, 2)
     : "No protected person references yet.";
+  renderPersonLinks();
   transcript.replaceChildren();
   if (!turns.length) {
     const empty = document.createElement("div");
@@ -242,7 +319,8 @@ async function sendMessage(event) {
       include_tool: includeTool,
     });
     turns[turns.length - 1] = protectedResult.turn;
-    modelContext = protectedResult.model_context;
+    identityStatus = protectedResult.identity_status;
+    personLinks = protectedResult.person_links;
     filterMetric.textContent = `${protectedResult.metrics.filter_ms} ms`;
     handleMetric.textContent = protectedResult.metrics.handles;
     render();
@@ -260,7 +338,8 @@ async function sendMessage(event) {
       model_config: completionModelConfig,
     });
     turns = result.turns;
-    modelContext = result.model_context;
+    identityStatus = result.identity_status;
+    personLinks = result.person_links;
     filterMetric.textContent = `${result.metrics.filter_ms} ms`;
     llmMetric.textContent = `${(result.metrics.llm_ms / 1000).toFixed(1)} s`;
     handleMetric.textContent = result.metrics.handles;
@@ -295,7 +374,8 @@ async function resetConversation() {
   }
   sessionId = crypto.randomUUID();
   turns = [];
-  modelContext = null;
+  identityStatus = null;
+  personLinks = [];
   filterMetric.textContent = "—";
   llmMetric.textContent = "—";
   handleMetric.textContent = "0";

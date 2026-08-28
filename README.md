@@ -38,8 +38,21 @@ vault-emitted pairs in the protected history. Repeated `NAME` references make ex
 normalized lexical equality explicit without merging the surrounding `PERSON`
 identities or transferring their actions, roles, or authority. The derivation validates
 opaque pair references without reading mapped values, so model-invented combinations are
-ignored. This request-only map is inspectable in the protected UI lane; it is not added
-to canonical conversation or Markdown memory.
+ignored. This request-only map is sent to the model but is not added to canonical
+conversation or Markdown memory. The protected UI lane separately shows an opaque,
+UI-only identity-resolution status. Confirmed candidate links remain visible there for
+audit clarity but are omitted from the outbound model context, which contains only the
+canonical identity.
+
+Shared-name matches also appear as vertically stacked **Proposals** in the trusted demo
+lane. Each proposal shows the restored values beside their opaque references so a
+resolver can confirm or reject it with an evidence source and resolver identity. These
+append-only, project-scoped decisions persist in SQLite with a timestamp and supersession
+provenance. Rejections remain active until an explicit later decision supersedes them.
+Confirmations canonicalize only a derived model-request copy; protected conversation and
+Markdown memory retain their original references and restore their originally captured
+wording. Identity confirmation does not prove any action, role, approval, revocation, or
+authority event.
 
 The same request carries a structured protected evidence contract. It keeps verified
 facts, unresolved questions, and hypotheses distinct; permits a contradiction only when
@@ -100,8 +113,11 @@ python3 demo-ui/server.py
 
 Open the configured local address, load the synthetic scenario, and compare the
 authorised user view with the exact protected history retained for the LLM and memory.
-The protected lane also exposes the request-only identity map separately from that
-canonical history.
+The protected lane also exposes a clearly labelled UI-only identity-resolution status;
+it is not presented as the exact outbound model context.
+The trusted resolver lists unresolved Proposals separately from recorded confirmed and
+rejected decisions; the protected lane exposes the same statuses using opaque references
+only.
 The optional web-search example resolves only the authorised domain argument at the
 trusted tool boundary and protects the result before returning it to the LLM.
 
@@ -119,8 +135,8 @@ the authorised presentation edge.
 
 Known spelling or format variants can be reconciled explicitly with
 `vault.add_alias(reference, type, value)`. Uncertain identity consolidation remains an
-application decision; the guard does not guess that two similar names identify one
-person.
+explicit trusted decision; the guard proposes shared-name matches but does not guess that
+two similar names identify one person.
 
 ## Check
 
