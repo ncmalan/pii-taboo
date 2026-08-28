@@ -70,14 +70,77 @@ class PiiGuardTest(unittest.TestCase):
         first_name_handle, last_name_handle = protected_name.split()
         self.assertEqual(first_worker.restore(first_name_handle), "Alice")
         self.assertEqual(first_worker.restore(last_name_handle), "Smith")
-        self.assertTrue(first_name_handle.startswith(f"{person_reference}-"))
-        self.assertTrue(last_name_handle.startswith(f"{person_reference}-"))
+        self.assertTrue(first_name_handle.startswith(f"{person_reference}-FN:NAME-SH-"))
+        self.assertTrue(last_name_handle.startswith(f"{person_reference}-LN:NAME-SH-"))
         self.assertEqual(second_worker.restore(person_reference), "Alice Smith")
         self.assertNotEqual(
             PiiVault(self.db, "another-project", self.key).reference(
                 "private_person", "Alice Smith"
             ),
             person_reference,
+        )
+
+    def test_person_identity_is_separate_from_project_scoped_name_values(self):
+        vault = PiiVault(self.db, "project-7", self.key)
+        john_blake = vault.reference("private_person", "John Blake")
+        john_smith = vault.reference("private_person", "John Smith")
+        john_mention = vault.reference("private_person", "John")
+        blake_first, blake_last = vault.replacement(
+            "private_person", "John Blake"
+        ).split()
+        smith_first, _ = vault.replacement("private_person", "John Smith").split()
+        partial = vault.replacement("private_person", "John")
+        john_name = blake_first.split(":", 1)[1]
+
+        self.assertRegex(john_name, r"^NAME-SH-[A-Z2-7]{12}$")
+        self.assertEqual(blake_first, f"{john_blake}-FN:{john_name}")
+        self.assertEqual(smith_first, f"{john_smith}-FN:{john_name}")
+        self.assertEqual(partial, f"{john_mention}-UNRESOLVED:{john_name}")
+        self.assertEqual(len({john_blake, john_smith, john_mention}), 3)
+        self.assertEqual(vault.restore(john_name), "John")
+        self.assertEqual(vault.restore(blake_first), "John")
+        self.assertEqual(vault.restore(blake_last), "Blake")
+        self.assertEqual(vault.restore(partial), "John")
+
+        titled = vault.replacement("private_person", "Dr. Ndlovu")
+        self.assertRegex(
+            titled,
+            r"^Dr\. PERSON-SH-[A-Z2-7]{12}-UNRESOLVED:NAME-SH-[A-Z2-7]{12}$",
+        )
+        self.assertEqual(vault.restore(titled), "Dr. Ndlovu")
+
+        protected, _ = protect_messages(
+            [{"role": "user", "content": "John met John Blake."}],
+            lambda text: [
+                Span("private_person", 0, 4),
+                Span("private_person", 9, 19),
+            ],
+            vault,
+        )
+        self.assertNotIn("John", protected[-1]["content"])
+        self.assertIn(john_name, protected[-1]["content"])
+
+        restarted = PiiVault(self.db, "project-7", self.key)
+        self.assertEqual(
+            restarted.replacement("private_person", "John"), partial
+        )
+        other_project = PiiVault(self.db, "project-8", self.key)
+        other_key = PiiVault(
+            str(Path(self.temp_dir.name) / "other-key.sqlite3"),
+            "project-7",
+            "another-test-key-which-is-at-least-32-bytes",
+        )
+        self.assertNotEqual(
+            other_project.replacement("private_person", "John").split(":", 1)[1],
+            john_name,
+        )
+        self.assertNotEqual(
+            other_key.replacement("private_person", "John").split(":", 1)[1],
+            john_name,
+        )
+        self.assertEqual(
+            vault.replacement("private_person", "JOHN").split(":", 1)[1],
+            john_name,
         )
 
     def test_normalization_and_reconciled_aliases(self):
@@ -93,7 +156,11 @@ class PiiGuardTest(unittest.TestCase):
         titled = vault.reference("private_person", "Mr. Peter Johnson")
         self.assertEqual(vault.reference("private_person", "Peter Johnson"), titled)
         titled_replacement = vault.replacement("private_person", "Mr. Peter Johnson")
-        self.assertEqual(titled_replacement, f"Mr. {titled}-FN {titled}-LN")
+        self.assertRegex(
+            titled_replacement,
+            rf"^Mr\. {titled}-FN:NAME-SH-[A-Z2-7]{{12}} "
+            rf"{titled}-LN:NAME-SH-[A-Z2-7]{{12}}$",
+        )
         self.assertEqual(vault.restore(titled_replacement), "Mr. Peter Johnson")
 
         email = vault.reference("private_email", "peter.johnson@example.com")

@@ -11,8 +11,12 @@ python3 demo-ui/server.py
 
 Open [http://127.0.0.1:8765](http://127.0.0.1:8765), load the synthetic scenario, and
 send it. Continue chatting to see stable handles persist across user, agent, and tool
-turns. Honorifics remain readable while names and emails retain independently reusable
-components such as `PERSON-SH-…-FN` and `EMAIL-SH-…-USER@EMAIL-SH-…-DOMAIN`.
+turns. Honorifics remain readable while names pair identity/role handles with atomic
+name-value handles, such as `PERSON-SH-…-FN:NAME-SH-…`. The sample shows `John Blake`
+and standalone `John` sharing a `NAME` handle without sharing a `PERSON` identity.
+Single-token person mentions remain explicitly incomplete as
+`PERSON-SH-…-UNRESOLVED:NAME-SH-…`. Emails retain independently reusable components such
+as `EMAIL-SH-…-USER@EMAIL-SH-…-DOMAIN`.
 Unambiguous dates use `-DAY-NUM` / `-DAY-ISO`, `-MONTH-NAME-ENG` / `-MONTH-ISO`, and
 `-YEAR`, allowing Qwen to select a representation and reorder opaque components while
 the presentation filter restores the corresponding values.
